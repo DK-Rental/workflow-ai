@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Workflow AI</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="empty">
+  <main class="container">
+    <h1 id="hero-title" class="hero-title">What are you working on?</h1>
+
+    <header class="chat-header">
+      <div class="chat-title">Workflow AI</div>
+      <div class="chat-subtitle">
+        Ask anything about emails and files searching, and DK Rental SOPs.
+      </div>
+    </header>
+
+    <section class="chat-section">
+      <div id="chat-log" class="chat-log"></div>
+
+      <details id="ev-toggle" class="evidence-section">
+        <summary>Evidence (emails & OneDrive)</summary>
+        <div id="evidence" class="evidence-list"></div>
+      </details>
+    </section>
+
+    <form id="chat-form" class="chat-input">
+      <div class="input-pill">
+        <textarea id="prompt" rows="1" placeholder="Type your question"></textarea>
+        <button id="send" type="submit" class="pill-icon" aria-label="Send" disabled>D</button>
+      </div>
+      <div class="status-row">
+        <span id="status" class="status"></span>
+      </div>
+    </form>
+  </main>
+
+  <script src="{{ url_for('static', filename='scripts.js') }}"></script>
+</body>
+</html>
