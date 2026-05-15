@@ -40,6 +40,14 @@ def init_db():
             created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    existing = [row[1] for row in conn.execute("PRAGMA table_info(videos)")]
+    for col, definition in [
+        ("category", "TEXT DEFAULT ''"),
+        ("tags",     "TEXT DEFAULT '[]'"),
+        ("blob_key", "TEXT DEFAULT ''"),
+    ]:
+        if col not in existing:
+            conn.execute(f"ALTER TABLE videos ADD COLUMN {col} {definition}")
     conn.commit()
     conn.close()
 
