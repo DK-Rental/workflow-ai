@@ -1,0 +1,58 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.16",
+  "version": "1.0.1",
+  "id": "289fecd3-6bc5-440b-b6ec-904e54becdde",
+  "packageName": "com.workflow.ai.joe",
+  "developer": {
+    "name": "Workflow AI Team",
+    "websiteUrl": "https://dk-workflow-ai-dwcefgdrd7e7fvfe.canadacentral-01.azurewebsites.net",
+    "privacyUrl": "https://dk-workflow-ai-dwcefgdrd7e7fvfe.canadacentral-01.azurewebsites.net/privacy",
+    "termsOfUseUrl": "https://dk-workflow-ai-dwcefgdrd7e7fvfe.canadacentral-01.azurewebsites.net/terms"
+  },
+  "name": {
+    "short": "Joe",
+    "full": "Joe - SOP AI Assistant"
+  },
+  "description": {
+    "short": "Chat with Joe about SOPs.",
+    "full": "Add Joe to private or group chats to query standard operating procedures and ask document questions."
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "accentColor": "#FFFFFF",
+  "bots": [
+    {
+      "botId": "289fecd3-6bc5-440b-b6ec-904e54becdde",
+      "scopes": [
+        "personal",
+        "groupchat"
+      ],
+      "isNotificationOnly": false,
+      "supportsFiles": false
+    }
+  ],
+  "validDomains": [
+    "dk-workflow-ai-dwcefgdrd7e7fvfe.canadacentral-01.azurewebsites.net"
+  ],
+  "webApplicationInfo": {
+    "id": "289fecd3-6bc5-440b-b6ec-904e54becdde",
+    "resource": "https://dk-workflow-ai-dwcefgdrd7e7fvfe.canadacentral-01.azurewebsites.net"
+  },
+  "authorization": {
+    "permissions": {
+      "resourceSpecific": [
+        {
+          "type": "Application",
+          "name": "ChannelMessage.Read.Group"
+        },
+        {
+          "type": "Application",
+          "name": "ChatAndChannelMessage.Read.Group"
+        }
+      ]
+    }
+  }
+}

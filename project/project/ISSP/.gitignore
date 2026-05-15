@@ -1,0 +1,7 @@
+# Virtual environment
+venv/
+# Mac Book things
+.DS_Store
+
+.env
+__pycache__/

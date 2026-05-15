@@ -1,0 +1,69 @@
+{
+  "sop_id": "SOP-YARDI-MOVE-IN-PRE-SIGN",
+  "title": "Change Tenant Move-In Date prior to Signing Tenancy Agreement",
+  "objective": "To adjust move-in dates in the property management system after approval but before the legal lease is executed.",
+  "trigger": "Tenant approved for a non-standard date (e.g., Nov 15th).",
+  "systems": {
+    "primary": "Yardi Voyager",
+    "portal": "Rent Café Site Manager"
+  },
+  "procedural_steps": [
+    {
+      "step": 1,
+      "task": "Identify Approved Date",
+      "instruction": "Confirm the tenant's approved move-in date (e.g., Nov 15th).",
+      "note": "Internal contact with the accounting/back office (e.g., Brenda) is not required for this specific change."
+    },
+    {
+      "step": 2,
+      "task": "Access Prospect Page",
+      "instruction": "Navigate from the Home page to the specific Prospect record.",
+      "timestamp": "0:13"
+    },
+    {
+      "step": 3,
+      "task": "Validate System Status",
+      "instruction": "Verify if the back office is locked.",
+      "constraint": "Changes cannot be made if the back office is locked; only 'light' changes are accessible in this state."
+    },
+    {
+      "step": 4,
+      "task": "Access Pending Applications",
+      "instruction": "Go to the property page and select the 'Pending Applications' section.",
+      "timestamp": "0:42"
+    },
+    {
+      "step": 5,
+      "task": "Update Rental Options",
+      "instruction": "Select the unit and set 'Expected Move-In' to the 15th.",
+      "logic_rule": "Set the lease date to the 30th of the month, as tenants are responsible for the full month's rent regardless of the specific move-in day.",
+      "timestamp": "0:54"
+    },
+    {
+      "step": 6,
+      "task": "Verify Contact & Charge Details",
+      "instruction": "Check application charges and verify phone numbers are correctly displayed.",
+      "warning": "System glitch alert: Mobile numbers often fail to sync to the agreement; ensure phone numbers are in 'Home' or 'Office' fields.",
+      "timestamp": "2:16"
+    },
+    {
+      "step": 7,
+      "task": "Sync & Generate Agreement",
+      "instruction": "Launch Rent Café to verify the date has updated to the 15th, then generate the Tenancy Agreement.",
+      "sub_tasks": [
+        "Review prorated rent and payment details.",
+        "Double-check emails and contact info.",
+        "Review parking and storage locker agreements."
+      ]
+    },
+    {
+      "step": 8,
+      "task": "Finalize Documents",
+      "instruction": "Save cleaned documents in the appropriate subfolder for signature preparation.",
+      "timestamp": "4:50"
+    }
+  ],
+  "resources": {
+    "loom_video": "https://loom.com/share/d0b7b718db7b45a1a4c7c500ff9cdaff"
+  }
+}

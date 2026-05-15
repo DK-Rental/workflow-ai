@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Joe Workflow — SOP Processor</title>
+<style>
+:root {
+  --teams-purple:#6264A7;
+  --teams-purple-light:#E8E8F4;
+  --teams-purple-hover:#4F52A3;
+  --surface:#ffffff;
+  --surface-2:#F5F5F5;
+  --border:#E1DFDD;
+  --text-primary:#201F1E;
+  --text-secondary:#605E5C;
+  --text-muted:#8A8886;
+  --success-bg:#DFF6DD;
+  --success-text:#107C10;
+  --error-bg:#FDE7E9;
+  --error-text:#A4262C;
+  --processing-bg:#EEF2F8;
+  --processing-text:#4F52A3;
+  --radius-sm:4px;
+  --radius-md:6px;
+  --mono:'Cascadia Code','Consolas',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',system-ui,sans-serif;font-size:14px;color:var(--text-primary);background:var(--surface-2);min-height:100vh;}
+
+/* ── Toast ── */
+#toast-container{position:fixed;top:16px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none;}
+.toast{display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:var(--radius-md);font-size:13px;font-weight:500;box-shadow:0 4px 16px rgba(0,0,0,0.12);pointer-events:all;animation:slideIn 0.25s ease;max-width:340px;}
+.toast.success{background:#fff;border-left:4px solid var(--success-text);color:var(--success-text);}
+.toast.error  {background:#fff;border-left:4px solid var(--error-text);color:var(--error-text);}
+.toast.info   {background:#fff;border-left:4px solid var(--teams-purple);color:var(--teams-purple);}
+.toast svg{flex-shrink:0;}
+.toast-msg{flex:1;}
+.toast-close{background:none;border:none;cursor:pointer;color:var(--text-muted);padding:2px;}
+@keyframes slideIn{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}
+@keyframes slideOut{from{transform:translateX(0);opacity:1}to{transform:translateX(120%);opacity:0}}
+.toast.hiding{animation:slideOut 0.2s ease forwards;}
+
+/* ── Header ── */
+.page-header{background:var(--surface);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:10px;}
+.page-header-text h1{font-size:15px;font-weight:600;color:var(--text-primary);}
+.page-header-text p{font-size:12px;color:var(--text-secondary);}
+
+main{max-width:800px;margin:0 auto;padding:20px 16px 60px;}
+
+/* ── Cards ── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:20px;margin-bottom:12px;}
+.card-label{font-size:11px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:14px;}
+
+/* ── Dropzone ── */
+.dropzone{border:1.5px dashed var(--border);border-radius:var(--radius-md);padding:36px 20px;text-align:center;cursor:pointer;transition:border-color 0.15s,background 0.15s;background:var(--surface-2);}
+.dropzone:hover,.dropzone.drag-over{border-color:var(--teams-purple);background:var(--teams-purple-light);}
+.dropzone-icon{width:40px;height:40px;margin:0 auto 10px;background:var(--teams-purple-light);border-radius:var(--radius-md);display:flex;align-items:center;justify-content:center;}
+.dropzone-icon svg{color:var(--teams-purple);}
+.dropzone-title{font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:4px;}
+.dropzone-sub{font-size:12px;color:var(--text-muted);}
+.dropzone-sub a{color:var(--teams-purple);text-decoration:none;font-weight:600;}
+#file-input{display:none;}
+
+/* ── File chips ── */
+.file-list{display:flex;flex-direction:column;gap:8px;margin-top:10px;}
+.file-chip{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--teams-purple-light);border:1px solid #C7C8E8;border-radius:var(--radius-md);}
+.file-chip-icon{width:32px;height:32px;border-radius:var(--radius-sm);background:var(--teams-purple);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.file-chip-icon svg{color:#fff;}
+.file-chip-info{flex:1;min-width:0;}
+.file-chip-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.file-chip-meta{font-size:11px;color:var(--text-secondary);}
+.file-chip-remove{background:none;border:none;cursor:pointer;color:var(--text-muted);padding:4px;border-radius:var(--radius-sm);display:flex;align-items:center;}
+.file-chip-remove:hover{background:rgba(0,0,0,0.06);color:var(--text-primary);}
+
+/* ── Tags input ── */
+.tags-row{margin-top:12px;}
+.tags-row label{font-size:11px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px;}
+.tags-input-wrap{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface);min-height:38px;cursor:text;}
+.tags-input-wrap:focus-within{border-color:var(--teams-purple);}
+.tag-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;background:var(--teams-purple-light);color:var(--teams-purple);border-radius:100px;font-size:11px;font-weight:600;}
+.tag-chip-remove{background:none;border:none;cursor:pointer;color:var(--teams-purple);padding:0;line-height:1;font-size:13px;}
+.tags-input{border:none;outline:none;font-size:13px;font-family:inherit;color:var(--text-primary);flex:1;min-width:80px;background:transparent;}
+
+/* ── Category row ── */
+.meta-row{display:flex;gap:12px;margin-top:12px;}
+.meta-field{flex:1;}
+.meta-field label{font-size:11px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:6px;}
+.meta-field select,.meta-field input{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-md);font-family:inherit;font-size:13px;color:var(--text-primary);background:var(--surface);outline:none;}
+.meta-field select:focus,.meta-field input:focus{border-color:var(--teams-purple);}
+
+/* ── Buttons ── */
+.submit-row{margin-top:16px;display:flex;align-items:center;gap:12px;}
+.btn-primary{padding:8px 20px;background:var(--teams-purple);color:#fff;border:none;border-radius:var(--radius-md);font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;transition:background 0.15s;white-space:nowrap;}
+.btn-primary:hover:not(:disabled){background:var(--teams-purple-hover);}
+.btn-primary:disabled{opacity:0.45;cursor:not-allowed;}
+.btn-secondary{padding:6px 14px;background:var(--surface);color:var(--teams-purple);border:1.5px solid var(--teams-purple);border-radius:var(--radius-md);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;transition:background 0.15s;}
+.btn-secondary:hover{background:var(--teams-purple-light);}
+.btn-ghost{padding:5px 10px;background:none;color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius-md);font-family:inherit;font-size:12px;cursor:pointer;}
+.btn-ghost:hover{background:var(--surface-2);}
+
+/* ── Progress ── */
+.progress-wrap{display:none;flex:1;flex-direction:column;gap:4px;}
+.progress-wrap.show{display:flex;}
+.progress-track{height:3px;background:var(--border);border-radius:2px;overflow:hidden;}
+.progress-fill{height:100%;background:var(--teams-purple);width:0%;transition:width 0.4s ease;}
+.progress-label{font-size:12px;color:var(--text-secondary);}
+
+/* ── Filter bar ── */
+.filter-bar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;}
+.filter-bar input{padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-md);font-family:inherit;font-size:12px;outline:none;background:var(--surface);}
+.filter-bar input:focus{border-color:var(--teams-purple);}
+.filter-bar select{padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-md);font-family:inherit;font-size:12px;background:var(--surface);color:var(--text-primary);outline:none;}
+
+/* ── Queue table ── */
+.queue-table-wrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th{text-align:left;font-size:11px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.4px;padding:8px 12px;border-bottom:1px solid var(--border);white-space:nowrap;}
+td{padding:10px 12px;border-bottom:1px solid var(--border);color:var(--text-primary);vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+.mono-sm{font-family:var(--mono);font-size:11px;color:var(--text-muted);}
+.empty-row{text-align:center;padding:24px 12px;color:var(--text-muted);font-size:13px;}
+.tag-pill{display:inline-flex;align-items:center;gap:3px;padding:1px 6px;background:var(--teams-purple-light);color:var(--teams-purple);border-radius:100px;font-size:10px;font-weight:600;margin-right:3px;}
+
+.badge{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:100px;font-size:11px;font-weight:600;}
+.badge::before{content:'';width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+.badge-processing{background:var(--processing-bg);color:var(--processing-text);}
+.badge-processing::before{background:var(--processing-text);}
+.badge-done{background:var(--success-bg);color:var(--success-text);}
+.badge-done::before{background:var(--success-text);}
+.badge-error{background:var(--error-bg);color:var(--error-text);}
+.badge-error::before{background:var(--error-text);}
+
+/* ── SOP result panel ── */
+.sop-panel{margin-top:6px;padding:14px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-md);}
+.sop-panel-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.sop-panel-title{font-size:12px;font-weight:600;color:var(--text-primary);}
+.sop-actions{display:flex;gap:6px;}
+.sop-sections{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.sop-section{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:12px;}
+.sop-section.full{grid-column:1/-1;}
+.sop-section h4{font-size:10px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;}
+.sop-section p{font-size:13px;line-height:1.6;color:var(--text-primary);}
+.sop-section ul{font-size:13px;line-height:1.6;padding-left:16px;color:var(--text-primary);}
+.sop-section textarea{width:100%;border:1px solid var(--teams-purple);border-radius:var(--radius-sm);font-family:inherit;font-size:13px;line-height:1.6;padding:6px 8px;resize:vertical;outline:none;min-height:80px;}
+
+/* ── Upload error ── */
+.upload-error{margin-top:12px;padding:10px 14px;background:var(--error-bg);border:1px solid #F4ABAF;border-radius:var(--radius-md);color:var(--error-text);font-size:13px;display:none;}
+.upload-error.show{display:block;}
+
+/* ── Modal ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;display:none;align-items:center;justify-content:center;}
+.modal-overlay.show{display:flex;}
+.modal{background:var(--surface);border-radius:var(--radius-md);padding:24px;width:500px;max-width:90vw;max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.15);}
+.modal h2{font-size:15px;font-weight:600;margin-bottom:16px;}
+.modal textarea{width:100%;border:1px solid var(--border);border-radius:var(--radius-md);font-family:inherit;font-size:13px;line-height:1.6;padding:10px;resize:vertical;outline:none;min-height:120px;}
+.modal textarea:focus{border-color:var(--teams-purple);}
+.modal-actions{display:flex;gap:8px;margin-top:14px;justify-content:flex-end;}
+</style>
+</head>
+<body>
+
+<div id="toast-container"></div>
+
+<div class="page-header">
+  <svg width="28" height="28" viewBox="0 0 28 28" fill="none"><rect width="28" height="28" rx="6" fill="#6264A7"/><path d="M8 9h12M8 13h8M8 17h10" stroke="white" stroke-width="1.8" stroke-linecap="round"/></svg>
+  <div class="page-header-text">
+    <h1>Joe Workflow — SOP Processor</h1>
+    <p>Upload videos to extract, review, edit and refine standard operating procedures</p>
+  </div>
+</div>
+
+<input type="file" id="file-input" accept="video/*,.mp4,.mov,.avi,.mkv,.webm,.mp3,.m4a,.wav" multiple/>
+
+<main>
+
+  <!-- Upload card -->
+  <div class="card">
+    <div class="card-label">Upload videos</div>
+
+    <div class="dropzone" id="dropzone">
+      <div class="dropzone-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      </div>
+      <p class="dropzone-title">Drag and drop your videos here</p>
+      <p class="dropzone-sub">or <a href="#" id="browse-link">browse files</a> — MP4, MOV, WEBM, MP3, WAV and more</p>
+    </div>
+
+    <div class="file-list" id="file-list"></div>
+
+    <!-- Tags -->
+    <div class="tags-row">
+      <label>Tags <span style="font-weight:400;text-transform:none;letter-spacing:0">(press Enter to add)</span></label>
+      <div class="tags-input-wrap" id="tags-wrap" onclick="document.getElementById('tag-input').focus()">
+        <input class="tags-input" id="tag-input" placeholder="e.g. parking, tenant, move-in…" />
+      </div>
+    </div>
+
+    <!-- Category -->
+    <div class="meta-row">
+      <div class="meta-field">
+        <label>Category <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+        <select id="upload-category">
+          <option value="">— Select —</option>
+          <option>Move-In</option><option>Move-Out</option><option>Maintenance</option>
+          <option>Leasing</option><option>Emergency</option><option>General</option>
+        </select>
+      </div>
+    </div>
+    <p style="font-size:11px;color:var(--text-muted);margin-top:8px">📁 Title is taken automatically from the video filename — no need to fill anything in.</p>
+
+    <div class="upload-error" id="upload-error"></div>
+
+    <div class="submit-row">
+      <button class="btn-primary" id="upload-btn" onclick="submitUpload()" disabled>Process &amp; Upload</button>
+      <div class="progress-wrap" id="upload-progress">
+        <div class="progress-track"><div class="progress-fill" id="upload-bar"></div></div>
+        <span class="progress-label" id="upload-status">Processing…</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Queue card -->
+  <div class="card">
+    <div class="card-label">Results — this session</div>
+
+    <div class="filter-bar">
+      <input type="text" id="filter-search" placeholder="Search by filename or tag…" oninput="renderQueue()"/>
+      <select id="filter-status" onchange="renderQueue()">
+        <option value="">All statuses</option>
+        <option value="processing">Processing</option>
+        <option value="done">Done</option>
+        <option value="error">Error</option>
+      </select>
+      <select id="filter-category" onchange="renderQueue()">
+        <option value="">All categories</option>
+        <option>Move-In</option><option>Move-Out</option><option>Maintenance</option>
+        <option>Leasing</option><option>Emergency</option><option>General</option>
+      </select>
+    </div>
+
+    <div class="queue-table-wrap">
+      <table>
+        <thead>
+          <tr><th>File</th><th>Category</th><th>Tags</th><th>Blob Key</th><th>Status</th><th></th></tr>
+        </thead>
+        <tbody id="queue-body">
+          <tr><td colspan="6" class="empty-row">No videos processed yet this session.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<!-- Refine modal -->
+<div class="modal-overlay" id="refine-modal">
+  <div class="modal">
+    <h2>Refine SOP</h2>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:10px;">Tell the AI how to improve this SOP. Be specific.</p>
+    <textarea id="refine-prompt" placeholder="e.g. Make the steps more concise. Add a warning about parking stall subletting. Rewrite in a formal tone."></textarea>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="closeRefineModal()">Cancel</button>
+      <button class="btn-primary" id="refine-submit-btn" onclick="submitRefine()">Refine</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Tags ────────────────────────────────────────────────────────────────────
+let currentTags = [];
+const tagInput = document.getElementById('tag-input');
+tagInput.addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ',') && tagInput.value.trim()) {
+    e.preventDefault();
+    addTag(tagInput.value.trim().replace(/,/g,''));
+    tagInput.value = '';
+  } else if (e.key === 'Backspace' && !tagInput.value && currentTags.length) {
+    currentTags.pop();
+    renderTags();
+  }
+});
+function addTag(val) {
+  if (val && !currentTags.includes(val)) { currentTags.push(val); renderTags(); }
+}
+function removeTag(i) { currentTags.splice(i,1); renderTags(); }
+function renderTags() {
+  const wrap = document.getElementById('tags-wrap');
+  wrap.querySelectorAll('.tag-chip').forEach(el => el.remove());
+  currentTags.forEach((t,i) => {
+    const chip = document.createElement('span');
+    chip.className = 'tag-chip';
+    chip.innerHTML = `${esc(t)}<button class="tag-chip-remove" onclick="removeTag(${i})">×</button>`;
+    wrap.insertBefore(chip, tagInput);
+  });
+}
+
+// ── File selection ──────────────────────────────────────────────────────────
+let selectedFiles = [];
+const fileInput = document.getElementById('file-input');
+const dropzone  = document.getElementById('dropzone');
+
+document.getElementById('browse-link').addEventListener('click', e => { e.preventDefault(); fileInput.click(); });
+dropzone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => { if(fileInput.files.length) addFiles(Array.from(fileInput.files)); fileInput.value=''; });
+dropzone.addEventListener('dragover',  e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+dropzone.addEventListener('dragleave', ()  => dropzone.classList.remove('drag-over'));
+dropzone.addEventListener('drop', e => { e.preventDefault(); dropzone.classList.remove('drag-over'); if(e.dataTransfer.files.length) addFiles(Array.from(e.dataTransfer.files)); });
+
+function addFiles(files) {
+  const existing = new Set(selectedFiles.map(f => f.name+f.size));
+  files.forEach(f => { if(!existing.has(f.name+f.size)) selectedFiles.push(f); });
+  renderFileList();
+}
+function removeFile(i) { selectedFiles.splice(i,1); renderFileList(); }
+function renderFileList() {
+  const container = document.getElementById('file-list');
+  container.innerHTML = '';
+  selectedFiles.forEach((file,i) => {
+    const chip = document.createElement('div');
+    chip.className = 'file-chip';
+    chip.innerHTML = `
+      <div class="file-chip-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg></div>
+      <div class="file-chip-info">
+        <div class="file-chip-name">${esc(file.name)}</div>
+        <div class="file-chip-meta">${formatBytes(file.size)}</div>
+      </div>
+      <button class="file-chip-remove" title="Remove"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`;
+    chip.querySelector('.file-chip-remove').addEventListener('click', () => removeFile(i));
+    container.appendChild(chip);
+  });
+  document.getElementById('upload-btn').disabled = selectedFiles.length === 0;
+  document.getElementById('upload-error').classList.remove('show');
+}
+
+// ── Progress ────────────────────────────────────────────────────────────────
+function setProgress(pct, label) {
+  document.getElementById('upload-progress').classList.add('show');
+  document.getElementById('upload-bar').style.width = pct+'%';
+  document.getElementById('upload-status').textContent = label;
+}
+function hideProgress() { document.getElementById('upload-progress').classList.remove('show'); }
+function showUploadError(msg) { const el=document.getElementById('upload-error'); el.textContent=msg; el.classList.add('show'); }
+
+// ── Toast ───────────────────────────────────────────────────────────────────
+function toast(msg, type='info', duration=4000) {
+  const icons = {
+    success: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+    error:   `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+    info:    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+  };
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `${icons[type]||''}<span class="toast-msg">${esc(msg)}</span><button class="toast-close" onclick="dismissToast(this.parentElement)">✕</button>`;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => dismissToast(el), duration);
+}
+function dismissToast(el) {
+  if(!el || el.classList.contains('hiding')) return;
+  el.classList.add('hiding');
+  setTimeout(() => el.remove(), 220);
+}
+
+// ── Queue state ─────────────────────────────────────────────────────────────
+const queue = []; // { id, fileName, videoId, category, tags, blobKey, status, sop, expanded }
+
+function addToQueue(entry) { queue.unshift(entry); renderQueue(); }
+function updateQueueEntry(videoId, patch) {
+  const q = queue.find(q => q.videoId === videoId);
+  if(q) { Object.assign(q, patch); renderQueue(); }
+}
+
+function renderQueue() {
+  const search   = document.getElementById('filter-search').value.toLowerCase();
+  const statF    = document.getElementById('filter-status').value;
+  const catF     = document.getElementById('filter-category').value;
+  const tbody    = document.getElementById('queue-body');
+
+  const filtered = queue.filter(q => {
+    if(statF && q.status !== statF) return false;
+    if(catF  && q.category !== catF) return false;
+    if(search) {
+      const inName = q.fileName.toLowerCase().includes(search);
+      const inTags = (q.tags||[]).some(t => t.toLowerCase().includes(search));
+      if(!inName && !inTags) return false;
+    }
+    return true;
+  });
+
+  if(!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="6" class="empty-row">${queue.length ? 'No results match your filters.' : 'No videos processed yet this session.'}</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(q => {
+    const tagPills = (q.tags||[]).map(t => `<span class="tag-pill">${esc(t)}</span>`).join('');
+    const sopRow = q.expanded && q.sop ? buildSopRow(q) : '';
+    return `
+      <tr>
+        <td><strong>${esc(q.fileName)}</strong></td>
+        <td>${esc(q.category||'—')}</td>
+        <td>${tagPills||'—'}</td>
+        <td class="mono-sm">${esc(q.blobKey||'—')}</td>
+        <td><span class="badge badge-${q.status}">${q.status}</span></td>
+        <td style="white-space:nowrap">
+          ${q.status==='done' ? `
+            <button class="btn-ghost" onclick="toggleSop('${q.videoId}')">${q.expanded ? 'Hide' : 'View SOP'}</button>
+          ` : ''}
+        </td>
+      </tr>
+      ${sopRow}`;
+  }).join('');
+}
+
+function buildSopRow(q) {
+  const sop = q.sop || {};
+  const steps = (sop.steps||[]).map((s,i) => `
+    <li id="step-${q.videoId}-${i}" style="margin-bottom:4px">
+      <span class="step-text">${esc(s)}</span>
+      <button class="btn-ghost" style="padding:2px 6px;font-size:11px;margin-left:6px" onclick="editStep('${q.videoId}',${i})">Edit</button>
+    </li>`).join('');
+  const kps = (sop.key_points||[]).map((k,i) => `
+    <li id="kp-${q.videoId}-${i}" style="margin-bottom:4px">
+      <span class="kp-text">${esc(k)}</span>
+      <button class="btn-ghost" style="padding:2px 6px;font-size:11px;margin-left:6px" onclick="editKp('${q.videoId}',${i})">Edit</button>
+    </li>`).join('');
+
+  return `<tr><td colspan="6" style="padding:0 12px 12px">
+    <div class="sop-panel">
+      <div class="sop-panel-header">
+        <span class="sop-panel-title">📄 SOP — ${esc(q.fileName)}</span>
+        <div class="sop-actions">
+          <button class="btn-secondary" onclick="openRefineModal('${q.videoId}')">✨ Refine with AI</button>
+          <button class="btn-ghost" onclick="downloadSop('${q.videoId}')">⬇ Download JSON</button>
+        </div>
+      </div>
+      <div class="sop-sections">
+        <div class="sop-section full">
+          <h4>Summary</h4>
+          <p id="summary-${q.videoId}">${esc(sop.summary||'—')}</p>
+          <button class="btn-ghost" style="margin-top:6px;font-size:11px" onclick="editSummary('${q.videoId}')">Edit</button>
+        </div>
+        <div class="sop-section">
+          <h4>Steps</h4>
+          <ul id="steps-list-${q.videoId}">${steps||'<li style="color:var(--text-muted)">None</li>'}</ul>
+        </div>
+        <div class="sop-section">
+          <h4>Key Points</h4>
+          <ul id="kp-list-${q.videoId}">${kps||'<li style="color:var(--text-muted)">None</li>'}</ul>
+        </div>
+      </div>
+    </div>
+  </td></tr>`;
+}
+
+function toggleSop(videoId) {
+  const q = queue.find(q => q.videoId === videoId);
+  if(q) { q.expanded = !q.expanded; renderQueue(); }
+}
+
+// ── Inline edit ─────────────────────────────────────────────────────────────
+function editSummary(videoId) {
+  const q = queue.find(q => q.videoId === videoId);
+  const el = document.getElementById(`summary-${videoId}`);
+  if(!el || !q) return;
+  const orig = q.sop.summary || '';
+  el.outerHTML = `<textarea id="summary-${videoId}" style="width:100%;border:1px solid var(--teams-purple);border-radius:4px;font-family:inherit;font-size:13px;line-height:1.6;padding:6px;resize:vertical;min-height:80px;outline:none">${esc(orig)}</textarea>
+    <div style="display:flex;gap:6px;margin-top:6px">
+      <button class="btn-primary" style="font-size:11px;padding:4px 10px" onclick="saveSummary('${videoId}')">Save</button>
+      <button class="btn-ghost" style="font-size:11px" onclick="cancelEdit('${videoId}')">Cancel</button>
+    </div>`;
+}
+function saveSummary(videoId) {
+  const q = queue.find(q => q.videoId === videoId);
+  const el = document.getElementById(`summary-${videoId}`);
+  if(!q || !el) return;
+  q.sop.summary = el.value;
+  renderQueue();
+  toast('Summary saved', 'success');
+}
+function cancelEdit(videoId) { renderQueue(); }
+
+function editStep(videoId, i) {
+  const q = queue.find(q => q.videoId === videoId);
+  const li = document.getElementById(`step-${videoId}-${i}`);
+  if(!q || !li) return;
+  const orig = q.sop.steps[i];
+  li.innerHTML = `<input type="text" value="${esc(orig)}" style="width:70%;border:1px solid var(--teams-purple);border-radius:4px;padding:4px 6px;font-family:inherit;font-size:13px;outline:none" id="step-input-${videoId}-${i}"/>
+    <button class="btn-primary" style="font-size:11px;padding:3px 8px;margin-left:6px" onclick="saveStep('${videoId}',${i})">Save</button>
+    <button class="btn-ghost" style="font-size:11px;margin-left:4px" onclick="renderQueue()">Cancel</button>`;
+}
+function saveStep(videoId, i) {
+  const q = queue.find(q => q.videoId === videoId);
+  const inp = document.getElementById(`step-input-${videoId}-${i}`);
+  if(!q || !inp) return;
+  q.sop.steps[i] = inp.value;
+  renderQueue();
+  toast('Step updated', 'success');
+}
+
+function editKp(videoId, i) {
+  const q = queue.find(q => q.videoId === videoId);
+  const li = document.getElementById(`kp-${videoId}-${i}`);
+  if(!q || !li) return;
+  const orig = q.sop.key_points[i];
+  li.innerHTML = `<input type="text" value="${esc(orig)}" style="width:70%;border:1px solid var(--teams-purple);border-radius:4px;padding:4px 6px;font-family:inherit;font-size:13px;outline:none" id="kp-input-${videoId}-${i}"/>
+    <button class="btn-primary" style="font-size:11px;padding:3px 8px;margin-left:6px" onclick="saveKp('${videoId}',${i})">Save</button>
+    <button class="btn-ghost" style="font-size:11px;margin-left:4px" onclick="renderQueue()">Cancel</button>`;
+}
+function saveKp(videoId, i) {
+  const q = queue.find(q => q.videoId === videoId);
+  const inp = document.getElementById(`kp-input-${videoId}-${i}`);
+  if(!q || !inp) return;
+  q.sop.key_points[i] = inp.value;
+  renderQueue();
+  toast('Key point updated', 'success');
+}
+
+// ── Download JSON ───────────────────────────────────────────────────────────
+function downloadSop(videoId) {
+  const q = queue.find(q => q.videoId === videoId);
+  if(!q || !q.sop) return;
+  const blob = new Blob([JSON.stringify(q.sop, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = q.blobKey || `${q.fileName}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ── Refine modal ─────────────────────────────────────────────────────────────
+let refineTargetVideoId = null;
+function openRefineModal(videoId) { refineTargetVideoId = videoId; document.getElementById('refine-modal').classList.add('show'); document.getElementById('refine-prompt').focus(); }
+function closeRefineModal() { document.getElementById('refine-modal').classList.remove('show'); refineTargetVideoId=null; }
+
+async function submitRefine() {
+  const prompt = document.getElementById('refine-prompt').value.trim();
+  if(!prompt) return;
+  const q = queue.find(q => q.videoId === refineTargetVideoId);
+  if(!q) return;
+
+  const btn = document.getElementById('refine-submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Refining…';
+
+  try {
+    const resp = await fetch('/api/sop/refine', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ video_id: q.videoId, sop: q.sop, instruction: prompt })
+    });
+    const data = await resp.json();
+    if(!resp.ok) throw new Error(data.error||'Refine failed');
+    q.sop = data.sop;
+    q.expanded = true;
+    closeRefineModal();
+    renderQueue();
+    toast(`SOP for "${q.fileName}" refined successfully`, 'success');
+  } catch(err) {
+    toast(err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Refine';
+    document.getElementById('refine-prompt').value = '';
+  }
+}
+document.getElementById('refine-modal').addEventListener('click', e => { if(e.target===e.currentTarget) closeRefineModal(); });
+
+// ── Submit upload ───────────────────────────────────────────────────────────
+async function submitUpload() {
+  if(!selectedFiles.length) return;
+
+  const tags     = [...currentTags];
+  const category = document.getElementById('upload-category').value;
+
+  document.getElementById('upload-btn').disabled = true;
+  document.getElementById('upload-error').classList.remove('show');
+
+  const form = new FormData();
+  selectedFiles.forEach(f => form.append('video', f, f.name));
+  if(tags.length)  form.append('tags', JSON.stringify(tags));
+  if(category)     form.append('category', category);
+
+  const localEntries = selectedFiles.map(f => ({
+    id: Math.random().toString(36).slice(2),
+    fileName: f.name,
+    videoId: '…',
+    category,
+    tags,
+    blobKey: '',
+    status: 'processing',
+    sop: null,
+    expanded: false,
+  }));
+  localEntries.forEach(e => addToQueue(e));
+
+  setProgress(40, `Uploading ${selectedFiles.length} file${selectedFiles.length>1?'s':''}…`);
+  selectedFiles = [];
+  currentTags = [];
+  renderTags();
+  renderFileList();
+
+  try {
+    const resp = await fetch('/api/video/upload', { method:'POST', body:form });
+    const data = await resp.json();
+    if(!resp.ok && resp.status!==207) throw new Error(data.error||'Upload failed');
+
+    setProgress(80, 'Processing in background…');
+
+    const accepted = Array.isArray(data) ? data : (data.accepted||[]);
+    const rejected = Array.isArray(data) ? [] : (data.rejected||[]);
+
+    accepted.forEach(item => {
+      const entry = localEntries.find(e => e.fileName===item.filename);
+      if(entry) {
+        entry.videoId = item.video_id;
+        pollStatus(item.video_id, entry);
+      }
+    });
+
+    rejected.forEach(item => {
+      const entry = localEntries.find(e => e.fileName===item.filename);
+      if(entry) entry.status = 'error';
+    });
+
+    renderQueue();
+    if(rejected.length) showUploadError(`${rejected.length} file(s) rejected: ${rejected.map(r=>r.filename+' — '+r.error).join('; ')}`);
+    toast(`${accepted.length} video${accepted.length!==1?'s':''} queued for processing`, 'info');
+
+  } catch(err) {
+    localEntries.forEach(e => { e.status='error'; });
+    renderQueue();
+    showUploadError(err.message);
+    toast(err.message, 'error');
+    setProgress(100, 'Failed.');
+  } finally {
+    setTimeout(hideProgress, 3000);
+    document.getElementById('upload-btn').disabled = selectedFiles.length===0;
+  }
+}
+
+// ── Polling ──────────────────────────────────────────────────────────────────
+function pollStatus(videoId, queueEntry) {
+  const interval = setInterval(async () => {
+    try {
+      const resp = await fetch(`/api/video/status/${videoId}`);
+      if(!resp.ok) return;
+      const data = await resp.json();
+      if(data.status==='done' || data.status==='error') {
+        queueEntry.status  = data.status;
+        queueEntry.sop     = data.result || null;
+        queueEntry.blobKey = data.blob_key || queueEntry.blobKey;
+        renderQueue();
+        clearInterval(interval);
+        if(data.status==='done') {
+          toast(`✅ "${queueEntry.fileName}" processed — click View SOP to see results`, 'success', 6000);
+        } else {
+          toast(`❌ "${queueEntry.fileName}" failed: ${(data.result||{}).error||'Unknown error'}`, 'error', 6000);
+        }
+      }
+    } catch(_) {}
+  }, 5000);
+}
+
+// ── Utilities ────────────────────────────────────────────────────────────────
+function formatBytes(b) {
+  if(b<1024) return b+' B';
+  if(b<1048576) return (b/1024).toFixed(1)+' KB';
+  return (b/1048576).toFixed(1)+' MB';
+}
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>

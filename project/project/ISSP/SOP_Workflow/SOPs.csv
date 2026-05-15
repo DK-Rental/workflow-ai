@@ -1,0 +1,14 @@
+﻿SOP_ID,Process_Type,SOP_Title,Version,Last_Updated,Owner_Primary,RACI_R,RACI_A,RACI_C,RACI_I,Trigger_Text,Prerequisites,Tags
+STRATA-EMAIL-MONITOR-001,Property Management – Strata,"Comprehensive Strata Communication, Compliance & Documentation Workflow",6,2025-10-08,David K. Wong,Executive Assistant; Client Services 1 & 2,Regional Property Manager – David K. Wong,Strata Manager; Building Concierge; Owner,Tenants; Accounting; Maintenance Coordinator,"New strata notice, inspection, AGM, infraction, or management change",Outlook Shared Strata Folder; Building folder structure; LeadSimple workflows; Power Automate dashboard,"strata,notices,insurance,inspections,infractions,AGM,levy,manager-change,water,flow-meter,portal,parking"
+Property Management – Strata,,,,,,,,,,,,
+"Comprehensive Strata Communication, Compliance & Documentation Workflow",,,,,,,,,,,,
+6,,,,,,,,,,,,
+45938,,,,,,,,,,,,
+David K. Wong,,,,,,,,,,,,
+Executive Assistant; Client Services 1 & 2,,,,,,,,,,,,
+Regional Property Manager – David K. Wong,,,,,,,,,,,,
+Strata Manager; Building Concierge; Owner,,,,,,,,,,,,
+Tenants; Accounting; Maintenance Coordinator,,,,,,,,,,,,
+"New strata notice, inspection, AGM, infraction, or management change",,,,,,,,,,,,
+Outlook Shared Strata Folder; Building folder structure; LeadSimple workflows; Power Automate dashboard,,,,,,,,,,,,
+"strata,notices,insurance,inspections,infractions,AGM,levy,manager-change,water,flow-meter,portal,parking",,,,,,,,,,,,

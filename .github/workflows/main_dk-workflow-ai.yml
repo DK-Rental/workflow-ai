@@ -1,0 +1,56 @@
+name: Build and deploy Docker container to Azure Web App - dk-workflow-ai
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 1. Log into GitHub Container Registry (Free)
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 2. Build the Docker image using your Dockerfile
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          # context should be "." since your Dockerfile is in the root
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ghcr.io/dk-rental/dk-workflow-ai:latest
+
+      # 3. Log into Azure
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: >
+            {
+              "clientId": "${{ secrets.AZURE_CLIENT_ID }}",
+              "clientSecret": "${{ secrets.AZURE_CLIENT_SECRET }}",
+              "subscriptionId": "${{ secrets.AZURE_SUBSCRIPTION_ID }}",
+              "tenantId": "${{ secrets.AZURE_TENANT_ID }}"
+            }
+
+      # 4. Tell Azure App Service to run the container
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: 'dk-workflow-ai'
+          images: 'ghcr.io/dk-rental/dk-workflow-ai:latest'

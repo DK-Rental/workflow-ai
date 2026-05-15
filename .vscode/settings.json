@@ -1,0 +1,4 @@
+{
+    "appService.defaultWebAppToDeploy": "/subscriptions/b5b0b201-a4af-4326-ab93-1b579b63d318/resourceGroups/AzureAI/providers/Microsoft.Web/sites/dk-workflow-ai",
+    "appService.deploySubpath": "."
+}

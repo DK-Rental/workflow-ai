@@ -1,0 +1,38 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.16",
+  "version": "1.0.0",
+  "id": "e9c1b9c0-1234-5678-9abc-def012345678", 
+  "packageName": "com.workflow.ai.uploader",
+  "developer": {
+    "name": "Workflow AI Team",
+    "websiteUrl": "https://dk-workflow-ai-dwcefgdrd7e7fvfe.canadacentral-01.azurewebsites.net",
+    "privacyUrl": "https://dk-workflow-ai-dwcefgdrd7e7fvfe.canadacentral-01.azurewebsites.net/privacy",
+    "termsOfUseUrl": "https://dk-workflow-ai-dwcefgdrd7e7fvfe.canadacentral-01.azurewebsites.net/terms"
+  },
+  "name": {
+    "short": "SOP Uploader",
+    "full": "Workflow AI Video Uploader"
+  },
+  "description": {
+    "short": "Upload SOP videos.",
+    "full": "This app provides a clean, dedicated tab for uploading your SOP videos directly to the system."
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "accentColor": "#FFFFFF",
+  "staticTabs": [
+    {
+      "entityId": "videoUploaderTab",
+      "name": "SOP Uploader",
+      "contentUrl": "https://dk-workflow-ai-dwcefgdrd7e7fvfe.canadacentral-01.azurewebsites.net/",
+      "websiteUrl": "https://dk-workflow-ai-dwcefgdrd7e7fvfe.canadacentral-01.azurewebsites.net/",
+      "scopes": ["personal"]
+    }
+  ],
+  "validDomains": [
+    "dk-workflow-ai-dwcefgdrd7e7fvfe.canadacentral-01.azurewebsites.net"
+  ]
+}
