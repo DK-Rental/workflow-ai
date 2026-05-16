@@ -40,14 +40,6 @@ def init_db():
             created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    existing = [row[1] for row in conn.execute("PRAGMA table_info(videos)")]
-    for col, definition in [
-        ("category", "TEXT DEFAULT ''"),
-        ("tags",     "TEXT DEFAULT '[]'"),
-        ("blob_key", "TEXT DEFAULT ''"),
-    ]:
-        if col not in existing:
-            conn.execute(f"ALTER TABLE videos ADD COLUMN {col} {definition}")
     conn.commit()
     conn.close()
 
@@ -76,6 +68,14 @@ def get_db():
 def save_to_db(video_id, title, status, result, category='', tags=None, blob_key=''):
     conn = sqlite3.connect(DB_PATH)
     try:
+        # If title is empty, preserve the existing one
+        if not title:
+            row = conn.execute("SELECT title, category, tags, blob_key FROM videos WHERE video_id=?", (video_id,)).fetchone()
+            if row:
+                title    = row[0] or title
+                category = category or row[1] or ''
+                tags     = tags if tags is not None else json.loads(row[2] or '[]')
+                blob_key = blob_key or row[3] or ''
         conn.execute(
             "INSERT OR REPLACE INTO videos (video_id, title, category, tags, blob_key, status, result_json) VALUES (?,?,?,?,?,?,?)",
             (video_id, title, category, json.dumps(tags or []), blob_key, status, json.dumps(result))
@@ -225,6 +225,21 @@ def refine_sop_route():
         return jsonify({"sop": refined})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/video/cancel/<video_id>', methods=['POST'])
+def cancel_video(video_id):
+    """Mark a processing job as cancelled. The background thread will finish
+    naturally but the result will be discarded since status is already cancelled."""
+    conn = get_db()
+    row = conn.execute("SELECT status FROM videos WHERE video_id=?", (video_id,)).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({"error": "Video not found"}), 404
+    if row["status"] != 'processing':
+        return jsonify({"error": "Job is not in processing state"}), 400
+    save_to_db(video_id, '', 'cancelled', {"error": "Cancelled by user"})
+    return jsonify({"status": "cancelled"})
 
 
 @app.route('/privacy')

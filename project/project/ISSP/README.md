@@ -1,11 +1,10 @@
-# Project Structure & Responsibilities
+# Workflow AI: SOP Uploader & Joe Teams Bot
 
-This repository is organized around a **Flask-based backend**, a **lightweight frontend**, and **service-layer integrations** with Microsoft Graph and Azure OpenAI.
+This repository is organized around a **Flask-based backend**, a **lightweight video uploader frontend**, background processing threads for audio transcription, and a **Microsoft Bot Framework integration** powered by Azure OpenAI.
 
-The application is designed to be **stateless**, with no persistent chat memory.
+The application is deployed as **two separate Microsoft Teams applications** (a frontend Tab and a Chat Bot) backed by a unified server. 
 
-To fill in the values in the .env file, you can refer to the attached PDF.
-After confirming that the application works correctly, you should regenerate all API keys and replace the old ones for security.
+To fill in the values in the `.env` file, refer to your Azure Portal configurations. After confirming that the application works correctly in production, you should regenerate all API keys and replace the old ones for security.
 
 ---
 
@@ -13,261 +12,192 @@ After confirming that the application works correctly, you should regenerate all
 
 ```text
 .
-├── .github/workflows/
-├── SOP_Workflow/
-├── services/
-│   ├── graph_client.py
-│   └── llm_client.py
-├── static/
-│   ├── scripts.js
-│   └── style.css
-├── templates/
-│   └── index.html
-├── teams-app/
-│   ├── manifest.json
-│   ├── color.png
-│   └── outline.png
-├── app.py
-├── routes.py
-├── config.py
-├── requirements.txt
-├── .env
-└── README.md
+├── .github/workflows/         # CI/CD deployment pipelines (e.g., main_dk-workflow-ai.yml)
+├── tests/                     # Global test suite (conftest.py, test_issp.py)
+└── project/project/ISSP/      # Main Application Root
+    ├── Joe-Teams/             # Manifest & icons for the Joe Chat Bot App
+    ├── video-uploader/        # Manifest & icons for the SOP Uploader App
+    ├── services/
+    │   ├── ai_search.py       # Azure AI Search index management
+    │   ├── graph_client.py    # Microsoft Graph API integration (Legacy/Context)
+    │   └── llm_client.py      # Core AI logic (RAG querying and JSON SOP generation)
+    ├── SOP_Workflow/          # Knowledge base source files (docx, csv) for RAG indexing
+    ├── static/                # Frontend JS and CSS
+    ├── templates/             # Frontend HTML (index.html)
+    ├── app.py                 # Main Flask server & video upload endpoints
+    ├── team_routes.py         # Microsoft Bot Framework routing for Joe
+    ├── speech_service.py      # Audio extraction and transcription service
+    ├── config.py              # Environment variable configuration
+    ├── loom_videos.db         # Local SQLite database for background job tracking
+    ├── test_joe.py            # Local terminal testing script for the Bot
+    └── test_openai.py         # Local terminal testing script for LLM connectivity
 ```
+
+---
+
+## Application Entry & Processing
+
+The core processing is divided across dedicated routing and service files within the `ISSP` directory.
+
+### `app.py` (Web Server & Background Jobs)
+* **Flask Web Server:** Serves the frontend UI and handles `/api/video/upload` and `/api/video/loom` REST endpoints.
+* **Background Threading:** Video transcription and LLM generation can take minutes. `app.py` spawns daemon threads so the frontend doesn't time out.
+* **SQLite Job Tracking:** Maintains `loom_videos.db` to track upload statuses (`processing`, `done`, `error`) so the frontend can poll for updates.
+
+### `team_routes.py` (Bot Framework)
+* Hosts the `/api/messages` route.
+* Listens for Microsoft Teams messages, manages conversation memory (`_history`), and parses group chat mentions to trigger the AI safely.
+
+### `speech_service.py` (Transcription)
+* Dedicated service for extracting audio from uploaded video files and converting it to raw text for the LLM to process.
 
 ---
 
 ## Service Layer (`services/`)
 
-### `graph_client.py`
-
-Microsoft Graph API integration layer.
-
-This module is responsible for **all interactions with Microsoft 365 data**, using **application-level (client credentials) authentication**.
-
-**Key responsibilities:**
-
-#### Authentication
-
-* Obtains Microsoft Graph access tokens using:
-
-  * `TENANT_ID`
-  * `CLIENT_ID`
-  * `CLIENT_SECRET`
-* Uses **client credentials flow** (no delegated user auth).
-
-#### Shared Mailbox – Email Context
-
-* Fetches recent or search-relevant emails from a **shared mailbox**
-* Supports:
-
-  * Graph `$search` for relevance
-  * Fallback to recent messages if search is unavailable
-* Email data is:
-
-  * **Read-only**
-  * **Context-only** (never treated as authoritative knowledge)
-
-Returned email fields are intentionally limited:
-
-* subject
-* sender
-* receivedDateTime
-* bodyPreview
-
-#### OneDrive File Discovery
-
-* Resolves OneDrive drive ID dynamically or via config
-* Supports:
-
-  * Recursive traversal of folders
-  * Graph search (`/search(q=...)`)
-  * Fallback metadata scanning when search yields no results
-* Implements token extraction logic to improve file matching accuracy
-* Returns lightweight metadata (no file content unless explicitly downloaded)
-
-**Important constraints:**
-
-* No file contents are indexed or stored by default
-* File search is metadata-based unless content is explicitly downloaded
-* Designed for **read-only discovery**, not file mutation
-
----
-
 ### `llm_client.py`
+This module encapsulates all LLM interaction logic, divided strictly into two distinct responsibilities:
+* **Azure OpenAI + Azure AI Search (RAG):** Handled by `ask_llm()`. Used exclusively by Joe the Bot to pull verified SOP documents and answer questions.
+* **Transcript-to-SOP Generation:** Handled by `generate_sop_from_transcript()`. Used by the background workers in `app.py` to force the Azure LLM into `json_object` mode, converting raw audio transcripts into structured SOP schemas.
 
-Azure OpenAI + Azure AI Search orchestration layer.
-
-This module encapsulates **all LLM interaction logic**, including prompt design, authentication strategy, and retrieval-augmented generation (RAG).
-
-**Key responsibilities:**
-
-#### Azure OpenAI Client Management
-
-* Supports **two authentication modes**:
-
-  * API key (local development)
-  * Managed Identity / Azure AD token (production)
-* Automatically selects auth method based on environment variables
-
-#### Retrieval-Augmented Generation (RAG)
-
-* Optionally integrates with **Azure AI Search**
-* Uses:
-
-  * Configured search index
-  * In-scope document retrieval
-  * Top-N document grounding
-* Authentication supports:
-
-  * System-assigned managed identity (default)
-  * API key (optional)
-
-If Azure Search is not configured, the model runs in **LLM-only mode**.
-
-#### System Prompt Governance
-
-* Defines strict behavioral rules:
-
-  * Prefer SOP / knowledge base documents
-  * Use email context only when explicitly relevant
-  * Avoid hallucination or fabricated references
-  * Admit uncertainty when knowledge is insufficient
-
-#### Stateless Question Handling
-
-* Each request is processed independently
-* No conversation history is retained
-* Email context is passed explicitly per request (if available)
+### `ai_search.py` & `SOP_Workflow/`
+* The `SOP_Workflow` directory contains the raw Word documents and Excel sheets provided by the sponsor.
+* These files are indexed into Azure Search (managed via `ai_search.py`) to act as the authoritative knowledge base for Joe's RAG system.
 
 ---
 
-## Knowledge Base
-### SOP_Workflow/
+## Microsoft Teams Integration & Bot Logic
 
-This directory contains **knowledge base source files used for Azure AI Search–backed retrieval (RAG).**
-* Stores documents provided by the **project sponsor**
-* Includes **only files relevant to Workflow AI**
-* Excludes unrelated sponsor materials
+This system uses a **Dual-Manifest Architecture** to prevent Teams UI rendering bugs and keep the user experience cleanly separated.
 
-These files are intended to be:
-* Indexed by **Azure AI Search**
-* Used as authoritative reference material for:
-    * SOP explanations
-    * Workflow guidance
+### App 1: The SOP Uploader (Sidebar Tab)
+* **Manifest Location:** `ISSP/video-uploader/`
+* **Behavior:** A Personal Static Tab that embeds the Flask web interface (`index.html`).
+* **Purpose:** Allows employees to drag-and-drop video files or paste Loom URLs to generate new SOPs.
+* **State:** Stateless. The UI polls the backend SQLite database for job progress.
 
-Important notes:
-* Files in this directory are treated as **read-only knowledge sources**
-* They are not modified or generated by the application
-* The AI relies on Azure AI Search to retrieve relevant content from this folder at runtime
-
-This separation ensures:
-* Clear ownership of source documents
-* Controlled scope of AI knowledge
-* Reduced risk of irrelevant or outdated information influencing responses
+### App 2: Joe (AI Chat Bot)
+* **Manifest Location:** `ISSP/Joe-Teams/`
+* **Behavior:** A conversational bot integrated into private and group chats.
+* **State & Memory:** Stateful. Joe maintains a rolling `_history` dictionary (up to 10 turns per conversation) so users can ask follow-up questions.
+* **Group Chat Logic (The Silent Listener):**
+  * The manifest requests Resource-Specific Consent (`ChannelMessage.Read.Group`).
+  * Joe reads every message in a group chat to build conversation context silently in his memory.
+  * He only queries the LLM and replies if he is explicitly tagged using an `@Joe` mention or the `#Joe` hashtag.
 
 ---
 
-## Frontend Layer
+## Local Development & Testing
 
-### `templates/index.html`
+Because packaging and uploading zip files to Microsoft Teams is slow, the project includes dedicated local testing tools.
 
-* Primary UI template rendered by Flask
-* Serves as the entry point for:
+### `test_joe.py` & `test_openai.py`
+Local terminal testing scripts that bypass the Flask server and Microsoft Teams entirely.
+* **Usage:** Run `python test_joe.py` in your terminal.
+* **Purpose:** Allows developers to test Joe's memory, Azure Search RAG connectivity, and LLM prompt formatting instantly via the command line without needing to tunnel to Teams.
 
-  * Browser-based access
-  * Microsoft Teams Custom Tab
-
-### `static/scripts.js`
-
-* Handles client-side logic:
-
-  * User input submission
-  * API request triggering
-  * Response rendering
-* Does **not** store conversation history
-* No browser storage (localStorage/sessionStorage) is used
-
-### `static/style.css`
-
-* UI styling only
-* No functional logic
+### How to Run Locally
+1. Ensure `.env` is populated with Azure OpenAI, Azure Search, Azure Blob, and Teams Bot credentials.
+2. Navigate to the `ISSP` directory.
+3. Start the Flask server: `python app.py` (Runs on port `3978`).
+4. Ensure Dev Tunnels / ngrok are updated in the Azure Bot Portal if testing the live Teams connection locally.
 
 ---
 
-## Stateless UI & Conversation Model (Important)
+## Azure Infrastructure & Services
 
-The frontend and backend are intentionally designed as **stateless**:
+This application relies on a suite of Microsoft Azure services to handle hosting, artificial intelligence, data storage, audio transcription, and Teams routing.
 
-* No chat history persistence
-* No server-side session memory
-* No database-backed conversation storage
+### 1. Azure App Service (Web App)
+* **Resource Name:** `dk-workflow-ai`
+* **Purpose:** The primary hosting environment for the Python Flask backend.
+* **Role in App:** Runs `app.py`, processes background threading for video uploads, serves the frontend React/HTML for the SOP Uploader Tab, and hosts the webhook (`/api/messages`) for the Teams bot.
 
-**Implications:**
+### 2. Azure OpenAI Service
+* **Purpose:** The core Artificial Intelligence engine.
+* **Role in App:** Accessed via the `openai` Python SDK. It is used in two distinct ways:
+  1. **Generative Processing:** Converts raw audio transcripts into strictly formatted JSON SOPs.
+  2. **Conversational AI:** Powers Joe's chat responses using a specific deployment model (e.g., GPT-4o) configured in the `.env` file.
 
-* Page refresh or new tab = new conversation
-* Follow-up questions that rely on prior context will not be answered correctly
-* Users must restate relevant context in each request
+### 3. Azure AI Search
+* **Resource Name:** `dk-workflow-ai-search`
+* **Purpose:** The Vector Database and Retrieval-Augmented Generation (RAG) engine.
+* **Role in App:** Stores the indexed SOP documents (Word docs, CSVs). When a user asks Joe a question, this service retrieves the most relevant documents to feed to the LLM.
 
-Any future implementation of memory will require:
+### 4. Azure Blob Storage
+* **Resource Name:** `dksopstorage` (Container: `sop`)
+* **Purpose:** Unstructured cloud data storage.
+* **Role in App:** When a video is transcribed and converted into a JSON SOP, the raw JSON file is pushed to the `sop` container for permanent safekeeping before it is indexed by Azure Search.
 
-* Explicit backend session handling **or**
-* External storage (DB, cache, vector store, etc.)
+### 5. Azure Bot Service
+* **Resource Name:** `workflow-ai-bot` (Joe)
+* **Purpose:** The bridge between Microsoft Teams and your Flask server.
+* **Role in App:** Manages the Bot Framework credentials. It routes messages typed by users in Microsoft Teams directly to your Flask app's `/api/messages` endpoint.
 
----
-
-## Microsoft Teams Integration (`teams-app/`)
-
-### Deployment Model
-
-* The application is deployed as a **standard HTTPS web application** via Azure Web App
-* Microsoft Teams integration is done via **Custom Tab**
-* Teams simply embeds the external web URL
-
-**Key clarification:**
-
-* This is **not** a native Microsoft AI or Copilot extension
-* Teams does **not** host or execute AI logic
-* All AI behavior is defined and controlled by this application
-
-### Files
-
-* `manifest.json`: Teams tab configuration (URLs, permissions, domains)
-* `color.png`, `outline.png`: Teams app icons
+### 6. Azure AI Speech Service
+* **Resource Name:** `loom-video-transcription`
+* **Purpose:** Audio-to-text processing.
+* **Role in App:** Used by `speech_service.py` to extract and transcribe the audio from video files uploaded through the Teams sidebar app.
 
 ---
 
-## Application Entry & Routing
+## Environment Variables (.env Setup)
 
-### `app.py`
+To run this application locally or deploy it to a new environment, you must create a `.env` file in the `ISSP` root directory. Do not commit this file to version control.
 
-* Flask application entry point
-* Initializes the server and registers routes
-* Used by Azure App Service as the startup file
+Below is the required template. Request the actual API keys and secrets from the Azure administrator.
 
-### `routes.py`
+```env
+# ── Azure OpenAI Settings ──
+AZURE_OPENAI_ENDPOINT="https://<YOUR_OPENAI_RESOURCE_NAME>[.openai.azure.com/](https://.openai.azure.com/)"
+AZURE_OPENAI_API_KEY="<your-openai-api-key>"
+AZURE_OPENAI_API_VERSION="2024-02-15-preview"
+AZURE_OPENAI_DEPLOYMENT="<your-model-deployment-name>"
 
-* Defines API endpoints
-* Orchestrates:
+# ── Azure AI Search Settings ──
+AZURE_SEARCH_ENDPOINT="[https://dk-workflow-ai-search.search.windows.net](https://dk-workflow-ai-search.search.windows.net)"
+AZURE_SEARCH_KEY="<your-search-admin-key>"
+AZURE_SEARCH_INDEX="<your-index-name>"
 
-  * Frontend requests
-  * Graph client calls
-  * LLM responses
-* Acts as the glue between UI and service layer
+# ── Azure Blob Storage Settings ──
+AZURE_BLOB_CONNECTION_STRING="DefaultEndpointsProtocol=https;AccountName=dksopstorage;AccountKey=<your-account-key>;EndpointSuffix=core.windows.net"
+AZURE_BLOB_CONTAINER="sop"
 
-### `config.py`
+# ── Azure AI Speech Settings ──
+SPEECH_KEY="<your-speech-service-key>"
+SPEECH_REGION="<your-speech-resource-region>"
 
-* Centralized configuration
-* Loads environment variables
-* Provides shared settings to service modules
+# ── Teams Bot Settings (workflow-ai-bot) ──
+TEAMS_APP_ID="289fecd3-6bc5-440b-b6ec-904e54becdde"
+TEAMS_APP_PASSWORD="<your-azure-bot-client-secret>"
+```
 
 ---
 
-## Summary (Developer Perspective)
+## Deployment (CI/CD)
 
-* Stateless, request-based AI service
-* Custom-built AI workflow (not Microsoft Copilot)
-* Azure OpenAI used as an LLM provider only
-* Teams acts as a UI container via Custom Tab
-* All intelligence, prompts, and behavior are application-defined
+This project uses **GitHub Actions** for continuous integration and deployment to Azure.
 
+* **Workflow File:** `.github/workflows/main_dk-workflow-ai.yml`
+* **Trigger:** Any push or merge to the `main` branch automatically triggers the build and deployment pipeline.
+* **Process:** The action sets up the Python environment, installs dependencies from `requirements.txt`, and deploys the zipped artifact directly to the `dk-workflow-ai` Azure App Service.
+* **Note for future devs:** If you add new system-level dependencies or change the startup command, ensure the GitHub Actions workflow and the Azure App Service startup configurations are updated accordingly.
+
+---
+
+## Installing the Apps in Microsoft Teams
+
+Because this project uses a Dual-Manifest architecture, you must install two separate apps into Teams. 
+
+### 1. Packaging the Apps
+If you make changes to the names, descriptions, or URLs in the manifest files, you must re-package them:
+1. Navigate to `ISSP/video-uploader/` and zip `manifest.json`, `color.png`, and `outline.png` into `sop-uploader-app.zip`.
+2. Navigate to `ISSP/Joe-Teams/` and zip `manifest.json`, `color.png`, and `outline.png` into `joe-chat-app.zip`.
+
+### 2. Uploading to Teams
+1. Open Microsoft Teams and click on **Apps** in the left-hand sidebar.
+2. Click **Manage your apps** at the bottom of the screen.
+3. Click **Upload an app** -> **Upload a custom app**.
+4. Select `sop-uploader-app.zip` to install the UI tab.
+5. Repeat the process for `joe-chat-app.zip` to install Joe.
+6. **Important:** When installing Joe, Teams will prompt you to grant the `ChannelMessage.Read.Group` permission. An admin must approve this for the "Silent Listener" logic to work in group chats.
