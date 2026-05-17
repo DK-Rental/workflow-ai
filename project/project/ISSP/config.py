@@ -18,15 +18,15 @@ AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "")
 # --- Search Mapping ---
 AZURE_SEARCH_ENDPOINT = os.getenv("AZURE_SEARCH_ENDPOINT", "")
 
-AZURE_SEARCH_INDEX = os.getenv("AZURE_SEARCH_INDEX","")
+AZURE_SEARCH_INDEX = os.getenv("AZURE_SEARCH_INDEX","workflow")
 AZURE_SEARCH_KEY = os.getenv("AZURE_SEARCH_KEY", "")
 
 AZURE_SPEECH_KEY = os.getenv("AZURE_SPEECH_KEY", "")
-AZURE_BLOB_CONNECTION_STRING = os.getenv("AZURE_BLOB_CONNECTION_STRING")
-AZURE_BLOB_CONTAINER         = os.getenv("AZURE_BLOB_CONTAINER", "")
+AZURE_BLOB_CONNECTION_STRING = os.getenv("AZURE_BLOB_CONNECTION_STRING", "")
+AZURE_BLOB_CONTAINER         = os.getenv("AZURE_BLOB_CONTAINER", "sop")
 TEAMS_APP_PASSWORD = os.getenv("TEAMS_APP_PASSWORD", "")
 
-AZURE_SPEECH_REGION = os.getenv("AZURE_SPEECH_REGION", "")
+AZURE_SPEECH_REGION = os.getenv("AZURE_SPEECH_REGION", "eastus")
 
 SYSTEM_PROMPT = """
 You are "Joe Workflow", a senior property manager at DK Rentals.
@@ -39,4 +39,3 @@ Rules:
 4. Formatting: Use numbered steps for instructions and bold text for important warnings.
 5. Tone: Professional, calm, and senior-level.
 """
-
