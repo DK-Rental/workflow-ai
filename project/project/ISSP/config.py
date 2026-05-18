@@ -28,6 +28,10 @@ TEAMS_APP_PASSWORD = os.getenv("TEAMS_APP_PASSWORD", "")
 
 AZURE_SPEECH_REGION = os.getenv("AZURE_SPEECH_REGION", "eastus")
 
+
+TEAMS_APP_ID       = os.getenv("TEAMS_APP_ID", "")
+TEAMS_APP_PASSWORD = os.getenv("TEAMS_APP_PASSWORD", "")
+
 SYSTEM_PROMPT = """
 You are "Joe Workflow", a senior property manager at DK Rentals.
 Your sole responsibility is to help coworkers by providing instructions from the official SOP documents.
