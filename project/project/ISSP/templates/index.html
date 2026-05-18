@@ -336,70 +336,84 @@ function dismissToast(el) {
   el.classList.add('hiding'); setTimeout(()=>el.remove(),220);
 }
 
-// ── Queue state ───────────────────────────────────────────────────────────────
-const STORAGE_KEY  = 'joe_workflow_queue';
-const QUEUE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+// ── Queue state — backend is the source of truth ──────────────────────────────
+// We store video IDs in sessionStorage so we can re-fetch status after
+// Teams reloads the tab. The actual SOP data lives on the server.
+const STORAGE_KEY = 'joe_workflow_ids';
+const activePollers = {};
+const queue = [];
 
-function saveQueue() {
+function saveIds() {
   try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ savedAt: Date.now(), data: queue }));
+    const ids = queue.map(q => ({
+      videoId: q.videoId,
+      fileName: q.fileName,
+      category: q.category,
+      tags: q.tags,
+      blobKey: q.blobKey,
+      status: q.status,
+      expanded: q.expanded,
+      sop: q.sop,
+    }));
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
   } catch(_) {}
 }
 
-function clearQueueUI() {
-  queue.length = 0;
-  sessionStorage.removeItem(STORAGE_KEY);
-  document.getElementById('results-section').style.display = 'none';
-  document.getElementById('video-list').innerHTML = '';
-  Object.keys(activePollers).forEach(id => { clearInterval(activePollers[id]); delete activePollers[id]; });
-}
-
-function loadQueue() {
+function loadIds() {
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const { savedAt, data } = JSON.parse(raw);
-    if (Date.now() - savedAt > QUEUE_TTL_MS) {
-      // Expired — wipe storage and hide UI
-      sessionStorage.removeItem(STORAGE_KEY);
-      document.getElementById('results-section').style.display = 'none';
-      document.getElementById('video-list').innerHTML = '';
-      return [];
-    }
-    return data;
+    return raw ? JSON.parse(raw) : [];
   } catch(_) { return []; }
 }
 
-const activePollers = {};
-const queue = loadQueue();
-
-// Auto-clear UI if user stays on page past the 2 hour mark
-setInterval(() => {
-  const raw = sessionStorage.getItem(STORAGE_KEY);
-  if (!raw) return;
-  try {
-    const { savedAt } = JSON.parse(raw);
-    if (Date.now() - savedAt > QUEUE_TTL_MS) {
-      clearQueueUI();
-      toast('Session cleared after 2 hours', 'info');
+// On load: restore queue from sessionStorage and re-check any processing jobs
+(function restoreQueue() {
+  const saved = loadIds();
+  if (!saved.length) return;
+  saved.forEach(entry => queue.push(entry));
+  document.getElementById('results-section').style.display = 'block';
+  renderQueue();
+  // Re-check anything still processing — it may have finished while tab was away
+  queue.forEach(entry => {
+    if (entry.status === 'processing' && entry.videoId && entry.videoId !== '…') {
+      checkOnce(entry.videoId, entry);
+      pollStatus(entry.videoId, entry);
     }
-  } catch(_) {}
-}, 60 * 1000); // check every minute
+  });
+})();
 
-// ── Check status for a single job (one-shot, no interval) ─────────────────────
-async function checkStatus(videoId, queueEntry) {
+// When user returns to the tab, immediately re-check all processing jobs
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  queue.forEach(entry => {
+    if (entry.status === 'processing' && entry.videoId && entry.videoId !== '…') {
+      if (activePollers[entry.videoId]) { clearInterval(activePollers[entry.videoId]); delete activePollers[entry.videoId]; }
+      checkOnce(entry.videoId, entry);
+      pollStatus(entry.videoId, entry);
+    }
+  });
+});
+
+function addToQueue(entry) {
+  queue.unshift(entry);
+  saveIds();
+  document.getElementById('results-section').style.display='block';
+  renderQueue();
+}
+
+// ── Single status check (no interval) ────────────────────────────────────────
+async function checkOnce(videoId, queueEntry) {
   try {
     const resp = await fetch(`/api/video/status/${videoId}`);
     if (!resp.ok) return;
     const data = await resp.json();
     if (data.status === 'done' || data.status === 'error' || data.status === 'cancelled') {
-      queueEntry.status   = data.status;
-      queueEntry.sop      = data.result || null;
-      queueEntry.blobKey  = data.blob_key || queueEntry.blobKey;
+      queueEntry.status  = data.status;
+      queueEntry.sop     = data.result || null;
+      queueEntry.blobKey = data.blob_key || queueEntry.blobKey;
       if (data.status === 'done') queueEntry.expanded = true;
-      saveQueue();
+      saveIds();
       renderQueue();
-      // Stop the interval poller if running
       if (activePollers[videoId]) { clearInterval(activePollers[videoId]); delete activePollers[videoId]; }
       if (data.status === 'done')       toast(`✅ "${queueEntry.fileName}" done — SOP ready`, 'success', 6000);
       else if (data.status === 'error') toast(`❌ "${queueEntry.fileName}" failed`, 'error', 6000);
@@ -407,57 +421,11 @@ async function checkStatus(videoId, queueEntry) {
   } catch(_) {}
 }
 
-// ── Start interval poller for a job ──────────────────────────────────────────
+// ── Interval poller ───────────────────────────────────────────────────────────
 function pollStatus(videoId, queueEntry) {
-  if (activePollers[videoId]) return; // already polling
-  const interval = setInterval(() => checkStatus(videoId, queueEntry), 5000);
+  if (activePollers[videoId]) return;
+  const interval = setInterval(() => checkOnce(videoId, queueEntry), 5000);
   activePollers[videoId] = interval;
-}
-
-// ── KEY FIX: re-check all processing jobs when user returns to this tab ───────
-// Teams kills setInterval when you navigate away. visibilitychange fires the
-// moment you come back, so we immediately hit the status API and restart pollers.
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState !== 'visible') return;
-  queue.forEach(entry => {
-    if (entry.status === 'processing' && entry.videoId && entry.videoId !== '…') {
-      // Kill any stale (possibly dead) poller first
-      if (activePollers[entry.videoId]) { clearInterval(activePollers[entry.videoId]); delete activePollers[entry.videoId]; }
-      // Immediate status check — don't wait 5 seconds
-      checkStatus(entry.videoId, entry);
-      // Then resume interval polling in case it's still running
-      pollStatus(entry.videoId, entry);
-    }
-  });
-});
-
-// ── On load: resume polling for in-progress jobs ──────────────────────────────
-(function resumePolling() {
-  queue.forEach(entry => {
-    if (entry.status === 'processing') {
-      if (entry.videoId && entry.videoId !== '…') {
-        // Immediately check — the job may already be done from while you were away
-        checkStatus(entry.videoId, entry);
-        pollStatus(entry.videoId, entry);
-      } else {
-        // videoId never saved — upload was interrupted, can't recover
-        entry.status = 'error';
-        entry.sop = { error: 'Upload was interrupted. Please re-upload this file.' };
-      }
-    }
-  });
-  saveQueue();
-  if (queue.length) {
-    document.getElementById('results-section').style.display = 'block';
-    renderQueue();
-  }
-})();
-
-function addToQueue(entry) {
-  queue.unshift(entry);
-  saveQueue();
-  document.getElementById('results-section').style.display='block';
-  renderQueue();
 }
 
 function renderQueue() {
@@ -559,7 +527,7 @@ function buildSopSection(q) {
 
 function toggleSop(videoId) {
   const q=queue.find(q=>q.videoId===videoId);
-  if(q){q.expanded=!q.expanded; saveQueue(); renderQueue();}
+  if(q){q.expanded=!q.expanded; saveIds(); renderQueue();}
 }
 
 // ── Inline edit ───────────────────────────────────────────────────────────────
@@ -577,7 +545,7 @@ function saveSummary(videoId) {
   const q=queue.find(q=>q.videoId===videoId);
   const el=document.getElementById(`summary-${videoId}`);
   if(!q||!el) return;
-  q.sop.summary=el.value; saveQueue(); renderQueue(); toast('Summary saved','success');
+  q.sop.summary=el.value; saveIds(); renderQueue(); toast('Summary saved','success');
 }
 function editStep(videoId,i) {
   const q=queue.find(q=>q.videoId===videoId);
@@ -591,7 +559,7 @@ function saveStep(videoId,i) {
   const q=queue.find(q=>q.videoId===videoId);
   const inp=document.getElementById(`step-inp-${videoId}-${i}`);
   if(!q||!inp) return;
-  q.sop.steps[i]=inp.value; saveQueue(); renderQueue(); toast('Step updated','success');
+  q.sop.steps[i]=inp.value; saveIds(); renderQueue(); toast('Step updated','success');
 }
 function editKp(videoId,i) {
   const q=queue.find(q=>q.videoId===videoId);
@@ -605,7 +573,7 @@ function saveKp(videoId,i) {
   const q=queue.find(q=>q.videoId===videoId);
   const inp=document.getElementById(`kp-inp-${videoId}-${i}`);
   if(!q||!inp) return;
-  q.sop.key_points[i]=inp.value; saveQueue(); renderQueue(); toast('Key point updated','success');
+  q.sop.key_points[i]=inp.value; saveIds(); renderQueue(); toast('Key point updated','success');
 }
 
 // ── Download ──────────────────────────────────────────────────────────────────
@@ -637,8 +605,7 @@ async function submitRefine() {
     const data=await resp.json();
     if(!resp.ok) throw new Error(data.error||'Refine failed');
     q.sop=data.sop; q.expanded=true;
-    saveQueue();
-    closeRefineModal(); renderQueue();
+    saveIds(); closeRefineModal(); renderQueue();
     toast(`SOP for "${q.fileName}" refined successfully`,'success');
   } catch(err) { toast(err.message,'error'); }
   finally { btn.disabled=false; btn.textContent='Refine'; document.getElementById('refine-prompt').value=''; }
@@ -677,20 +644,20 @@ async function submitUpload() {
       const entry=localEntries.find(e=>e.fileName===item.filename);
       if(entry){
         entry.videoId=item.video_id;
-        saveQueue(); // save real videoId immediately
-        checkStatus(item.video_id, entry); // immediate check
-        pollStatus(item.video_id, entry);  // then interval
+        saveIds();
+        checkOnce(item.video_id, entry);
+        pollStatus(item.video_id, entry);
       }
     });
     rejected.forEach(item=>{
       const entry=localEntries.find(e=>e.fileName===item.filename);
-      if(entry) { entry.status='error'; saveQueue(); }
+      if(entry) { entry.status='error'; saveIds(); }
     });
     renderQueue();
     toast(`${accepted.length} video${accepted.length!==1?'s':''} queued for processing`,'info');
     if(rejected.length) showUploadError(`${rejected.length} file(s) rejected: ${rejected.map(r=>r.filename+' — '+r.error).join('; ')}`);
   } catch(err) {
-    localEntries.forEach(e=>{e.status='error';}); saveQueue(); renderQueue();
+    localEntries.forEach(e=>{e.status='error';}); saveIds(); renderQueue();
     showUploadError(err.message); toast(err.message,'error'); setProgress(100,'Failed.');
   } finally {
     setTimeout(hideProgress,3000);
@@ -703,7 +670,7 @@ async function cancelJob(videoId) {
   if(!q) return;
   if(activePollers[videoId]) { clearInterval(activePollers[videoId]); delete activePollers[videoId]; }
   try { await fetch(`/api/video/cancel/${videoId}`,{method:'POST'}); } catch(_){}
-  q.status='cancelled'; saveQueue(); renderQueue();
+  q.status='cancelled'; saveIds(); renderQueue();
   toast(`🚫 "${q.fileName}" cancelled`,'info');
 }
 
