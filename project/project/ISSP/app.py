@@ -263,6 +263,7 @@ def terms():
 
 
 # ── Joe bot ───────────────────────────────────────────────────────────────────
+#Update value
 BOT_SETTINGS = BotFrameworkAdapterSettings(config.TEAMS_APP_ID, config.TEAMS_APP_PASSWORD)
 BOT_ADAPTER  = BotFrameworkAdapter(BOT_SETTINGS)
 
