@@ -294,6 +294,7 @@ def _call_ai(question: str, history: list) -> str:
     result  = ask_ai(question, history)
     answer  = result.get("answer", "I'm having trouble accessing the SOPs right now.")
     sources = result.get("sources", [])
+    logging.warning("[DEBUG SOURCES] %s", json.dumps([s.get("title", "") for s in sources]))
 
     if sources and not _is_conversational(question):
         seen   = []
