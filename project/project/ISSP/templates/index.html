@@ -370,8 +370,8 @@ function loadQueue() {
   } catch(_) { return []; }
 }
 
-const queue = loadQueue();
 const activePollers = {};
+const queue = loadQueue();
 
 // Auto-clear UI if user stays on page past the 2 hour mark
 setInterval(() => {
