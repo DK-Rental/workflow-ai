@@ -361,7 +361,7 @@ async def on_turn(turn_context: TurnContext):
 def messages():
     if "application/json" not in request.headers.get("Content-Type", ""):
         return Response(status=415)
-    activity    = Activity().deserialize(request.json)
+    activity = Activity().deserialize(request.json)
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
