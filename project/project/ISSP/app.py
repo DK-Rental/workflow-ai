@@ -303,10 +303,17 @@ def _call_ai(question: str, history: list) -> str:
             t = s.get("title", "")
             if t and t not in seen:
                 seen.append(t)
-                blob_name = os.path.splitext(t)[0]      # strip .docx / .xlsx etc
-                blob_name = blob_name.replace(" ", "_")  # spaces → underscores
-                blob_name = f"{blob_name}.json"          # add .json extension
-                blob_url  = f"https://dksopstorage123.blob.core.windows.net/sop/{quote(blob_name)}"
+                ext = os.path.splitext(t)[1].lower()
+                if ext == ".json":
+                    # Already a processed blob key, use as-is
+                    blob_name = t
+                else:
+                    # Original filename (.docx, .xlsx, etc) — convert to blob key
+                    blob_name = os.path.splitext(t)[0]
+                    blob_name = re.sub(r'[^\w\s\-]', '', blob_name)
+                    blob_name = re.sub(r'\s+', '_', blob_name.strip())
+                    blob_name = f"{blob_name}.json"
+                blob_url = f"https://dksopstorage123.blob.core.windows.net/sop/{quote(blob_name)}"
                 titles.append(f"- [{t}]({blob_url})")
         if titles:
             answer += "\n\n**Sources:**\n" + "\n".join(titles)
