@@ -337,12 +337,54 @@ function dismissToast(el) {
 }
 
 // ── Queue state ───────────────────────────────────────────────────────────────
-const STORAGE_KEY = 'joe_workflow_queue';
-function saveQueue() { try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(queue)); } catch(_) {} }
-function loadQueue() { try { const r=sessionStorage.getItem(STORAGE_KEY); return r?JSON.parse(r):[]; } catch(_) { return []; } }
+const STORAGE_KEY  = 'joe_workflow_queue';
+const QUEUE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+function saveQueue() {
+  try {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ savedAt: Date.now(), data: queue }));
+  } catch(_) {}
+}
+
+function clearQueueUI() {
+  queue.length = 0;
+  sessionStorage.removeItem(STORAGE_KEY);
+  document.getElementById('results-section').style.display = 'none';
+  document.getElementById('video-list').innerHTML = '';
+  Object.keys(activePollers).forEach(id => { clearInterval(activePollers[id]); delete activePollers[id]; });
+}
+
+function loadQueue() {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const { savedAt, data } = JSON.parse(raw);
+    if (Date.now() - savedAt > QUEUE_TTL_MS) {
+      // Expired — wipe storage and hide UI
+      sessionStorage.removeItem(STORAGE_KEY);
+      document.getElementById('results-section').style.display = 'none';
+      document.getElementById('video-list').innerHTML = '';
+      return [];
+    }
+    return data;
+  } catch(_) { return []; }
+}
 
 const queue = loadQueue();
 const activePollers = {};
+
+// Auto-clear UI if user stays on page past the 2 hour mark
+setInterval(() => {
+  const raw = sessionStorage.getItem(STORAGE_KEY);
+  if (!raw) return;
+  try {
+    const { savedAt } = JSON.parse(raw);
+    if (Date.now() - savedAt > QUEUE_TTL_MS) {
+      clearQueueUI();
+      toast('Session cleared after 2 hours', 'info');
+    }
+  } catch(_) {}
+}, 60 * 1000); // check every minute
 
 // ── Check status for a single job (one-shot, no interval) ─────────────────────
 async function checkStatus(videoId, queueEntry) {
