@@ -314,6 +314,7 @@ def _call_ai(question: str, history: list) -> str:
                     blob_name = re.sub(r'\s+', '_', blob_name.strip())
                     blob_name = f"{blob_name}.json"
                 blob_url = f"https://dksopstorage123.blob.core.windows.net/sop/{quote(blob_name)}"
+                logging.warning("[DEBUG URL] title=%s | blob_name=%s | url=%s", t, blob_name, blob_url)
                 titles.append(f"- [{t}]({blob_url})")
         if titles:
             answer += "\n\n**Sources:**\n" + "\n".join(titles)
