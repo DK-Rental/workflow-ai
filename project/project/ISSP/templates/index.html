@@ -336,11 +336,47 @@ function dismissToast(el) {
   el.classList.add('hiding'); setTimeout(()=>el.remove(),220);
 }
 
-// ── Queue state ───────────────────────────────────────────────────────────────
-const queue=[];
-const activePollers={};
+// ── Queue state — persisted to sessionStorage so tab switches don't wipe it ──
+// sessionStorage survives tab switches and tab restores within the same Teams
+// session, but is cleared when the tab is fully closed. That's the right
+// trade-off: you see your jobs while working, but don't accumulate stale
+// entries across days.
+const STORAGE_KEY = 'joe_workflow_queue';
 
-function addToQueue(entry) { queue.unshift(entry); document.getElementById('results-section').style.display='block'; renderQueue(); }
+function saveQueue() {
+  try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(queue)); } catch(_) {}
+}
+
+function loadQueue() {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch(_) { return []; }
+}
+
+const queue = loadQueue();
+const activePollers = {};
+
+// On load, resume polling for any jobs that were still processing
+// when the tab was switched away or reloaded.
+(function resumePolling() {
+  queue.forEach(entry => {
+    if (entry.status === 'processing' && entry.videoId && entry.videoId !== '…') {
+      pollStatus(entry.videoId, entry);
+    }
+  });
+  if (queue.length) {
+    document.getElementById('results-section').style.display = 'block';
+    renderQueue();
+  }
+})();
+
+function addToQueue(entry) {
+  queue.unshift(entry);
+  saveQueue();
+  document.getElementById('results-section').style.display='block';
+  renderQueue();
+}
 
 function renderQueue() {
   const search = document.getElementById('filter-search').value.toLowerCase();
@@ -446,7 +482,7 @@ function buildSopSection(q) {
 
 function toggleSop(videoId) {
   const q=queue.find(q=>q.videoId===videoId);
-  if(q){q.expanded=!q.expanded;renderQueue();}
+  if(q){q.expanded=!q.expanded; saveQueue(); renderQueue();}
 }
 
 // ── Inline edit ───────────────────────────────────────────────────────────────
@@ -464,7 +500,7 @@ function saveSummary(videoId) {
   const q=queue.find(q=>q.videoId===videoId);
   const el=document.getElementById(`summary-${videoId}`);
   if(!q||!el) return;
-  q.sop.summary=el.value; renderQueue(); toast('Summary saved','success');
+  q.sop.summary=el.value; saveQueue(); renderQueue(); toast('Summary saved','success');
 }
 function editStep(videoId,i) {
   const q=queue.find(q=>q.videoId===videoId);
@@ -478,7 +514,7 @@ function saveStep(videoId,i) {
   const q=queue.find(q=>q.videoId===videoId);
   const inp=document.getElementById(`step-inp-${videoId}-${i}`);
   if(!q||!inp) return;
-  q.sop.steps[i]=inp.value; renderQueue(); toast('Step updated','success');
+  q.sop.steps[i]=inp.value; saveQueue(); renderQueue(); toast('Step updated','success');
 }
 function editKp(videoId,i) {
   const q=queue.find(q=>q.videoId===videoId);
@@ -492,7 +528,7 @@ function saveKp(videoId,i) {
   const q=queue.find(q=>q.videoId===videoId);
   const inp=document.getElementById(`kp-inp-${videoId}-${i}`);
   if(!q||!inp) return;
-  q.sop.key_points[i]=inp.value; renderQueue(); toast('Key point updated','success');
+  q.sop.key_points[i]=inp.value; saveQueue(); renderQueue(); toast('Key point updated','success');
 }
 
 // ── Download ──────────────────────────────────────────────────────────────────
@@ -524,6 +560,7 @@ async function submitRefine() {
     const data=await resp.json();
     if(!resp.ok) throw new Error(data.error||'Refine failed');
     q.sop=data.sop; q.expanded=true;
+    saveQueue();
     closeRefineModal(); renderQueue();
     toast(`SOP for "${q.fileName}" refined successfully`,'success');
   } catch(err) { toast(err.message,'error'); }
@@ -561,17 +598,17 @@ async function submitUpload() {
     const rejected=Array.isArray(data)?[]:(data.rejected||[]);
     accepted.forEach(item=>{
       const entry=localEntries.find(e=>e.fileName===item.filename);
-      if(entry){ entry.videoId=item.video_id; pollStatus(item.video_id,entry); }
+      if(entry){ entry.videoId=item.video_id; saveQueue(); pollStatus(item.video_id,entry); }
     });
     rejected.forEach(item=>{
       const entry=localEntries.find(e=>e.fileName===item.filename);
-      if(entry) entry.status='error';
+      if(entry) { entry.status='error'; saveQueue(); }
     });
     renderQueue();
     toast(`${accepted.length} video${accepted.length!==1?'s':''} queued for processing`,'info');
     if(rejected.length) showUploadError(`${rejected.length} file(s) rejected: ${rejected.map(r=>r.filename+' — '+r.error).join('; ')}`);
   } catch(err) {
-    localEntries.forEach(e=>{e.status='error';}); renderQueue();
+    localEntries.forEach(e=>{e.status='error';}); saveQueue(); renderQueue();
     showUploadError(err.message); toast(err.message,'error'); setProgress(100,'Failed.');
   } finally {
     setTimeout(hideProgress,3000);
@@ -580,7 +617,10 @@ async function submitUpload() {
 }
 
 // ── Polling ───────────────────────────────────────────────────────────────────
-function pollStatus(videoId,queueEntry) {
+function pollStatus(videoId, queueEntry) {
+  // Don't start a duplicate poller if one is already running for this job
+  if (activePollers[videoId]) return;
+
   const interval=setInterval(async()=>{
     try {
       const resp=await fetch(`/api/video/status/${videoId}`);
@@ -591,6 +631,7 @@ function pollStatus(videoId,queueEntry) {
         queueEntry.sop=data.result||null;
         queueEntry.blobKey=data.blob_key||queueEntry.blobKey;
         if(data.status==='done') queueEntry.expanded=true;
+        saveQueue();
         renderQueue();
         clearInterval(interval); delete activePollers[videoId];
         if(data.status==='done')       toast(`✅ "${queueEntry.fileName}" done — SOP ready`,'success',6000);
@@ -606,7 +647,7 @@ async function cancelJob(videoId) {
   if(!q) return;
   if(activePollers[videoId]) { clearInterval(activePollers[videoId]); delete activePollers[videoId]; }
   try { await fetch(`/api/video/cancel/${videoId}`,{method:'POST'}); } catch(_){}
-  q.status='cancelled'; renderQueue();
+  q.status='cancelled'; saveQueue(); renderQueue();
   toast(`🚫 "${q.fileName}" cancelled`,'info');
 }
 

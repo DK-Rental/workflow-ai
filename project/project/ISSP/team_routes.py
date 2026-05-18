@@ -27,7 +27,7 @@ _MAX_TURNS = 10
 # ── AI helper ─────────────────────────────────────────────────────────────────
 def _call_ai(question: str, history: list) -> str:
     """Call vector RAG and format response with source titles."""
-    result  = ask_ai(question)
+    result  = ask_ai(question,history)
     answer  = result.get("answer", "I'm having trouble accessing the SOPs right now.")
     sources = result.get("sources", [])
 
@@ -38,7 +38,8 @@ def _call_ai(question: str, history: list) -> str:
             t = s.get("title", "")
             if t and t not in seen:
                 seen.append(t)
-                titles.append(f"- {t}")
+                blob_url = f"https://dksopstorage123.blob.core.windows.net/sop/{t}"
+                titles.append(f"- [{t}]({blob_url})")
         if titles:
             answer += "\n\n**Sources:**\n" + "\n".join(titles)
 
