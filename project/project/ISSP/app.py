@@ -352,10 +352,11 @@ async def on_turn(turn_context: TurnContext):
         has_native_mention = False
         if turn_context.activity.entities:
             for entity in turn_context.activity.entities:
-                if (entity.type == "mention" and
-                        entity.mentioned.id == turn_context.activity.recipient.id):
-                    has_native_mention = True
-                    break
+                if entity.type == "mention":
+                    mentioned = getattr(entity, "mentioned", None)
+                    if mentioned and mentioned.id == turn_context.activity.recipient.id:
+                        has_native_mention = True
+                        break
 
         has_hashtag = raw_text.lower().startswith("#joe")
 
