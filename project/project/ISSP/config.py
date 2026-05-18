@@ -1,3 +1,4 @@
+# config.py — updated
 import os
 from dotenv import load_dotenv
 
