@@ -263,8 +263,11 @@ def terms():
 
 
 # ── Joe bot ───────────────────────────────────────────────────────────────────
-#Update value
-BOT_SETTINGS = BotFrameworkAdapterSettings(config.TEAMS_APP_ID, config.TEAMS_APP_PASSWORD)
+BOT_SETTINGS = BotFrameworkAdapterSettings(
+    config.TEAMS_APP_ID,
+    config.TEAMS_APP_PASSWORD,
+    channel_auth_tenant=config.TENANT_ID
+)
 BOT_ADAPTER  = BotFrameworkAdapter(BOT_SETTINGS)
 
 _history: Dict[str, List[Dict[str, str]]] = {}
@@ -362,12 +365,7 @@ def messages():
     activity    = Activity().deserialize(request.json)
     auth_header = request.headers.get("Authorization", "")
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(BOT_ADAPTER.process_activity(activity, auth_header, on_turn))
-    finally:
-        loop.close()
+    asyncio.run(BOT_ADAPTER.process_activity(activity, auth_header, on_turn))
 
     return Response(status=200)
 
