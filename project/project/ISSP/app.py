@@ -364,11 +364,15 @@ async def on_turn(turn_context: TurnContext):
                         has_native_mention = True
                         break
 
-        has_hashtag = raw_text.lower().startswith("#joe")
+        # Also detect <at>Joe</at> style mentions in raw text
+        has_at_mention = bool(re.search(r'<at>[^<]*</at>', raw_text))
+        has_hashtag    = raw_text.lower().startswith("#joe")
 
-        if has_native_mention or has_hashtag:
+        if has_native_mention or has_at_mention or has_hashtag:
             TurnContext.remove_recipient_mention(turn_context.activity)
             question = (turn_context.activity.text or "").strip()
+            # Strip any remaining <at>...</at> HTML tags
+            question = re.sub(r'<at>[^<]*</at>', '', question).strip()
 
             if has_hashtag:
                 question = question[4:].strip()
