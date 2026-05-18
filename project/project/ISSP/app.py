@@ -361,7 +361,12 @@ def messages():
     activity    = Activity().deserialize(request.json)
     auth_header = request.headers.get("Authorization", "")
 
-    asyncio.run(BOT_ADAPTER.process_activity(activity, auth_header, on_turn))
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(BOT_ADAPTER.process_activity(activity, auth_header, on_turn))
+    finally:
+        loop.close()
 
     return Response(status=200)
 
