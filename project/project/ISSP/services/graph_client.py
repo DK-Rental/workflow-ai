@@ -1,33 +1,7 @@
 """
 graph_client.py
-Microsoft Graph helpers — shared mailbox email + OneDrive file search.
+Microsoft Graph helpers — shared mailbox email + OneDrive file search.(Future Use)
 
-FIX 1: get_graph_token() was called inside every helper function — that's a full
-        HTTP round-trip to Azure AD on every single call. One user question that
-        touches email + OneDrive would fire 3-4 separate token requests. Added a
-        simple TTL cache so the token is reused until 60 s before expiry.
-
-FIX 2: No timeouts on any requests call — a hung Graph API response would block
-        the Flask worker thread forever. Added timeout=20 everywhere.
-
-FIX 3: search_shared_mailbox_messages fallback path read m.get("sender", {})
-        but get_recent_emails_for_context returns the key as "sender" on some
-        items and "from" on others (it maps item.get("from") to "sender").
-        The fallback was always returning an empty dict for the sender.
-        Normalised both functions to always use the key "from".
-
-FIX 4: list_children_page and list_children_paginated were two separate functions
-        where the paginated version re-fetched the first page through the single-
-        page function, then followed nextLink separately — duplicated logic that
-        could drift. Merged into one generator.
-
-FIX 5: find_files_in_onedrive swallowed ALL exceptions with bare
-        `except Exception: pass`, so a misconfigured drive ID or expired token
-        looked identical to "no files found". Now logs every exception and
-        re-raises on 401/403 auth errors immediately.
-
-FIX 6: resolve_user_drive_id had no retry — a transient 503 on drive resolution
-        crashed the entire file-search request. Added tenacity retry.
 """
 
 import logging

@@ -1,7 +1,7 @@
 import os
 import sys
 
-# Ensure the script can find your 'services' and 'config' files
+
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from services.llm_client import ask_llm
@@ -13,7 +13,7 @@ def run_local_test():
     print("Type 'quit' or 'exit' to stop.")
     print("==================================================\n")
 
-    # Keep track of local history just like the Teams route does
+    
     history = []
     MAX_TURNS = 10
 
