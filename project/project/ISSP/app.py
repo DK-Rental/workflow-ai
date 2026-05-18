@@ -323,6 +323,12 @@ def _call_ai(question: str, history: list) -> str:
 
 
 async def on_turn(turn_context: TurnContext):
+    logging.warning("[DEBUG TURN] type=%s | conv_type=%s | raw_text=%r | entities=%s",
+        turn_context.activity.type,
+        turn_context.activity.conversation.conversation_type,
+        turn_context.activity.text,
+        [e.type for e in (turn_context.activity.entities or [])]
+    )
     if turn_context.activity.type != "message":
         return
 
