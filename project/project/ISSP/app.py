@@ -1,24 +1,32 @@
+import asyncio
 import os
 import re
 import uuid
 import json
 import sqlite3
 import threading
-from flask import Flask, request, jsonify, render_template
+import logging
+from typing import Dict, List
+
+from flask import Flask, Response, request, jsonify, render_template
 from werkzeug.utils import secure_filename
+from botbuilder.core import BotFrameworkAdapter, BotFrameworkAdapterSettings, TurnContext
+from botbuilder.schema import Activity
+
 from speech_service import get_transcript_from_file
 from services.llm_client import generate_sop_from_transcript, refine_sop
+from services.ai_search import ask_ai
 from azure.storage.blob import BlobServiceClient
 import config
 
 app = Flask(__name__)
 
+# ── Upload config ─────────────────────────────────────────────────────────────
 UPLOAD_FOLDER = 'uploads'
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024 * 1024
-
 ALLOWED_EXTENSIONS = {'.mp4', '.mov', '.avi', '.mkv', '.webm', '.wav', '.mp3', '.m4a'}
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -76,7 +84,6 @@ def get_db():
 def save_to_db(video_id, title, status, result, category='', tags=None, blob_key=''):
     conn = sqlite3.connect(DB_PATH)
     try:
-        # If title is empty, preserve the existing one
         if not title:
             row = conn.execute("SELECT title, category, tags, blob_key FROM videos WHERE video_id=?", (video_id,)).fetchone()
             if row:
@@ -95,10 +102,10 @@ def save_to_db(video_id, title, status, result, category='', tags=None, blob_key
 
 # ── Blob ──────────────────────────────────────────────────────────────────────
 def filename_to_blob_key(original_filename: str) -> str:
-    name = os.path.splitext(original_filename)[0]   # strip .mp4 / .mov etc
-    name = re.sub(r'[^\w\s\-]', '', name)            # remove special chars
-    name = re.sub(r'\s+', '_', name.strip())         # spaces → underscores
-    return f"{name}.json"                             # e.g. Tenant.json
+    name = os.path.splitext(original_filename)[0]
+    name = re.sub(r'[^\w\s\-]', '', name)
+    name = re.sub(r'\s+', '_', name.strip())
+    return f"{name}.json"
 
 
 def upload_to_blob(blob_key: str, sop_data: dict) -> str:
@@ -127,7 +134,7 @@ def process_video_task(video_id, file_path, original_filename, category, tags):
             except Exception as ce: print(f"[BG] Cleanup warning: {ce}")
 
 
-# ── Routes ────────────────────────────────────────────────────────────────────
+# ── Video uploader routes ─────────────────────────────────────────────────────
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -138,9 +145,9 @@ def upload_video():
     if 'video' not in request.files:
         return jsonify({"error": "No file part in request"}), 400
 
-    files     = request.files.getlist('video')
-    tags      = json.loads(request.form.get('tags', '[]'))
-    category  = request.form.get('category', '')
+    files    = request.files.getlist('video')
+    tags     = json.loads(request.form.get('tags', '[]'))
+    category = request.form.get('category', '')
 
     valid_files = [f for f in files if f.filename != '']
     if not valid_files:
@@ -198,7 +205,6 @@ def video_status(video_id):
 
 @app.route('/api/sop/refine', methods=['POST'])
 def refine_sop_route():
-    """Take an existing SOP and an instruction, and return a refined version."""
     data        = request.get_json(silent=True) or {}
     video_id    = data.get('video_id', '')
     sop         = data.get('sop', {})
@@ -210,7 +216,6 @@ def refine_sop_route():
     try:
         refined = refine_sop(sop, instruction)
 
-        # Update blob and DB with refined SOP if we have a video_id
         if video_id:
             conn = get_db()
             row  = conn.execute("SELECT blob_key, title, category, tags FROM videos WHERE video_id=?", (video_id,)).fetchone()
@@ -237,8 +242,6 @@ def refine_sop_route():
 
 @app.route('/api/video/cancel/<video_id>', methods=['POST'])
 def cancel_video(video_id):
-    """Mark a processing job as cancelled. The background thread will finish
-    naturally but the result will be discarded since status is already cancelled."""
     conn = get_db()
     row = conn.execute("SELECT status FROM videos WHERE video_id=?", (video_id,)).fetchone()
     conn.close()
@@ -258,6 +261,112 @@ def privacy():
 def terms():
     return "Terms of Service: For internal company use only."
 
+
+# ── Joe bot ───────────────────────────────────────────────────────────────────
+BOT_SETTINGS = BotFrameworkAdapterSettings(config.TEAMS_APP_ID, config.TEAMS_APP_PASSWORD)
+BOT_ADAPTER  = BotFrameworkAdapter(BOT_SETTINGS)
+
+_history: Dict[str, List[Dict[str, str]]] = {}
+_MAX_TURNS = 10
+
+
+def _call_ai(question: str, history: list) -> str:
+    """Call vector RAG and format response with source titles."""
+    result  = ask_ai(question, history)
+    answer  = result.get("answer", "I'm having trouble accessing the SOPs right now.")
+    sources = result.get("sources", [])
+
+    if sources:
+        seen   = []
+        titles = []
+        for s in sources:
+            t = s.get("title", "")
+            if t and t not in seen:
+                seen.append(t)
+                blob_url = f"https://dksopstorage123.blob.core.windows.net/sop/{t}"
+                titles.append(f"- [{t}]({blob_url})")
+        if titles:
+            answer += "\n\n**Sources:**\n" + "\n".join(titles)
+
+    return answer
+
+
+async def on_turn(turn_context: TurnContext):
+    if turn_context.activity.type != "message":
+        return
+
+    raw_text          = (turn_context.activity.text or "").strip()
+    conversation_type = turn_context.activity.conversation.conversation_type
+    conv_id           = turn_context.activity.conversation.id
+    history           = _history.setdefault(conv_id, [])
+
+    # ── Private chat ──────────────────────────────────────────────────────────
+    if conversation_type == "personal":
+        TurnContext.remove_recipient_mention(turn_context.activity)
+        question = (turn_context.activity.text or "").strip()
+
+        if not question:
+            return
+
+        logging.info("[PRIVATE CHAT] conv=%s q=%s", conv_id, question)
+        answer = _call_ai(question, history)
+
+        history.append({"role": "user",      "content": question})
+        history.append({"role": "assistant", "content": answer})
+
+        await turn_context.send_activity(answer)
+
+    # ── Group chat ────────────────────────────────────────────────────────────
+    else:
+        has_native_mention = False
+        if turn_context.activity.entities:
+            for entity in turn_context.activity.entities:
+                if (entity.type == "mention" and
+                        entity.mentioned.id == turn_context.activity.recipient.id):
+                    has_native_mention = True
+                    break
+
+        has_hashtag = raw_text.lower().startswith("#joe")
+
+        if has_native_mention or has_hashtag:
+            TurnContext.remove_recipient_mention(turn_context.activity)
+            question = (turn_context.activity.text or "").strip()
+
+            if has_hashtag:
+                question = question[4:].strip()
+
+            if not question:
+                return
+
+            logging.info("[GROUP CHAT] Joe summoned! conv=%s q=%s", conv_id, question)
+            answer = _call_ai(question, history)
+
+            history.append({"role": "user",      "content": question})
+            history.append({"role": "assistant", "content": answer})
+
+            await turn_context.send_activity(answer)
+
+        else:
+            history.append({"role": "user", "content": f"Team context: {raw_text}"})
+
+    if len(history) > _MAX_TURNS * 2:
+        _history[conv_id] = history[-(_MAX_TURNS * 2):]
+
+
+@app.route("/api/messages", methods=["POST"])
+def messages():
+    if "application/json" not in request.headers.get("Content-Type", ""):
+        return Response(status=415)
+
+    activity    = Activity().deserialize(request.json)
+    auth_header = request.headers.get("Authorization", "")
+
+    asyncio.run(BOT_ADAPTER.process_activity(activity, auth_header, on_turn))
+
+    return Response(status=200)
+
+
+# ── Security headers ──────────────────────────────────────────────────────────
 @app.after_request
 def add_security_headers(response):
     response.headers['Content-Security-Policy'] = "frame-ancestors 'self' teams.microsoft.com *.teams.microsoft.com *.skype.com;"
@@ -267,4 +376,4 @@ def add_security_headers(response):
 
 
 if __name__ == "__main__":
-    app.run(port=3978, debug=True)
+    app.run(port=8000, debug=True)
