@@ -7,6 +7,7 @@ import sqlite3
 import threading
 import logging
 from typing import Dict, List
+from urllib.parse import quote
 
 from flask import Flask, Response, request, jsonify, render_template
 from werkzeug.utils import secure_filename
@@ -273,21 +274,38 @@ BOT_ADAPTER  = BotFrameworkAdapter(BOT_SETTINGS)
 _history: Dict[str, List[Dict[str, str]]] = {}
 _MAX_TURNS = 10
 
+# ── Conversational detection ──────────────────────────────────────────────────
+CONVERSATIONAL_PHRASES = [
+    "hello", "hi", "hey", "good morning", "good afternoon", "good evening",
+    "thanks", "thank you", "bye", "goodbye", "see you", "take care",
+    "how are you", "what can you do", "who are you", "help", "cheers",
+    "appreciate it", "perfect", "great", "awesome", "got it", "ok", "okay",
+    "sounds good", "cool", "nice", "no worries", "no problem",
+]
 
+def _is_conversational(question: str) -> bool:
+    q = question.lower().strip()
+    return any(q.startswith(phrase) for phrase in CONVERSATIONAL_PHRASES)
+
+
+# ── AI call ───────────────────────────────────────────────────────────────────
 def _call_ai(question: str, history: list) -> str:
     """Call vector RAG and format response with source titles."""
     result  = ask_ai(question, history)
     answer  = result.get("answer", "I'm having trouble accessing the SOPs right now.")
     sources = result.get("sources", [])
 
-    if sources:
+    if sources and not _is_conversational(question):
         seen   = []
         titles = []
         for s in sources:
             t = s.get("title", "")
             if t and t not in seen:
                 seen.append(t)
-                blob_url = f"https://dksopstorage123.blob.core.windows.net/sop/{t}"
+                blob_name = os.path.splitext(t)[0]      # strip .docx / .xlsx etc
+                blob_name = blob_name.replace(" ", "_")  # spaces → underscores
+                blob_name = f"{blob_name}.json"          # add .json extension
+                blob_url  = f"https://dksopstorage123.blob.core.windows.net/sop/{quote(blob_name)}"
                 titles.append(f"- [{t}]({blob_url})")
         if titles:
             answer += "\n\n**Sources:**\n" + "\n".join(titles)
