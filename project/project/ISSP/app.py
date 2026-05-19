@@ -12,7 +12,7 @@ from urllib.parse import quote
 from flask import Flask, Response, request, jsonify, render_template
 from werkzeug.utils import secure_filename
 from botbuilder.core import BotFrameworkAdapter, BotFrameworkAdapterSettings, TurnContext
-from botbuilder.schema import Activity
+from botbuilder.schema import Activity, ActivityTypes
 
 from speech_service import get_transcript_from_file
 from services.llm_client import generate_sop_from_transcript, refine_sop
@@ -346,6 +346,7 @@ async def on_turn(turn_context: TurnContext):
             return
 
         logging.info("[PRIVATE CHAT] conv=%s q=%s", conv_id, question)
+        await turn_context.send_activity(Activity(type=ActivityTypes.typing))
         answer = _call_ai(question, history)
 
         history.append({"role": "user",      "content": question})
@@ -381,6 +382,7 @@ async def on_turn(turn_context: TurnContext):
                 return
 
             logging.info("[GROUP CHAT] Joe summoned! conv=%s q=%s", conv_id, question)
+            await turn_context.send_activity(Activity(type=ActivityTypes.typing))
             answer = _call_ai(question, history)
 
             history.append({"role": "user",      "content": question})
